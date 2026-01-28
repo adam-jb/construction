@@ -1,10 +1,289 @@
 # Construction Design Code Search System - Detailed Plan
 
+
+To change down the line, but not necessary until you are asked to implement this specifically. For when you return images to user pertaining to their answer at the end:                              
+  - Return structured JSON with:                                     
+    - answer_markdown: The text resposne                          
+    - images: Array of {id, path, base64, caption, page bbox}
+  - Let the frontend/client decide how to render     
+
+
 ## Overview
 
 A system to search construction design code PDFs, follow reference chains across documents, and surface all relevant information for a given query.
 
-**Core principle:** Over-retrieve then filter. False negatives (missing info) are much worse than false positives (noise).
+**Core principles:**
+- Over-retrieve then filter. False negatives (missing info) are worse than false positives (noise).
+- Keep it simple. No unnecessary complexity.
+
+**Scale:** 5-10 documents, ~100 pages each.
+
+---
+
+## Repository Structure
+
+```
+construction/
+├── config.py              # All tunable parameters (ALL_CAPS constants)
+├── prompts.py             # All LLM prompts (easy to edit/improve)
+├── preprocess.py          # PDF parsing, chunking, indexing
+├── knowledge_graph.py     # Entity/relationship extraction, graph ops
+├── search.py              # BM25, embedding search, graph lookup
+├── query.py               # Main query loop, LLM review
+├── utils.py               # Helpers (PDF utils, text cleaning, etc.)
+├── main.py                # Entry point / CLI
+├── data/
+│   ├── pdfs/              # Source PDFs
+│   ├── chunks/            # Processed chunks (JSON)
+│   ├── tables/            # Extracted tables (JSON)
+│   ├── figures/           # Extracted figure images + metadata
+│   ├── graph.json         # Knowledge graph (NetworkX export)
+│   └── embeddings/        # ChromaDB storage
+└── requirements.txt
+```
+
+---
+
+## config.py - All Tunable Parameters
+
+```python
+"""
+Configuration constants. Edit these to tune system behavior.
+"""
+
+# =============================================================================
+# PREPROCESSING
+# =============================================================================
+CHUNK_MAX_TOKENS = 500
+CHUNK_MIN_TOKENS = 100
+CHUNK_OVERLAP_TOKENS = 50
+
+# =============================================================================
+# SEARCH
+# =============================================================================
+BM25_TOP_K = 20
+EMBEDDING_TOP_K = 20
+GRAPH_MAX_HOPS = 3
+
+# =============================================================================
+# QUERY LOOP
+# =============================================================================
+MAX_ITERATIONS = 4
+ADJACENT_CHUNKS_COUNT = 2
+
+# =============================================================================
+# LLM
+# =============================================================================
+LLM_MODEL = "gemini-2.0-flash"
+LLM_TEMPERATURE = 0.1
+
+# =============================================================================
+# EMBEDDINGS
+# =============================================================================
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # sentence-transformers model
+
+# =============================================================================
+# PATHS
+# =============================================================================
+DATA_DIR = "data"
+PDFS_DIR = f"{DATA_DIR}/pdfs"
+CHUNKS_DIR = f"{DATA_DIR}/chunks"
+TABLES_DIR = f"{DATA_DIR}/tables"
+FIGURES_DIR = f"{DATA_DIR}/figures"
+GRAPH_PATH = f"{DATA_DIR}/graph.json"
+CHROMA_PATH = f"{DATA_DIR}/embeddings"
+```
+
+---
+
+## prompts.py - All LLM Prompts
+
+```python
+"""
+All LLM prompts in one place for easy editing and improvement.
+"""
+
+# =============================================================================
+# PREPROCESSING PROMPTS
+# =============================================================================
+
+EXTRACT_ENTITIES_PROMPT = """
+Extract entities and relationships from this construction design code section.
+
+Document: {document_name}
+Section: {section_number} - {section_title}
+
+Text:
+\"\"\"
+{section_text}
+\"\"\"
+
+Entity types to extract:
+- Clause (numbered sections)
+- Table (with number and title)
+- Figure (with number and title)
+- Parameter (named values with symbols like γG, fck)
+- Concept (technical terms: "dead load", "permanent action")
+
+Relationship types:
+- REFERENCES: explicit reference to another clause/table/figure
+- DEFINED_IN: where a parameter or concept is defined
+- EQUIVALENT_TO: synonyms (e.g., "dead load" = "permanent action")
+
+Return JSON:
+{{
+  "entities": [
+    {{"type": "...", "id": "...", "name": "...", "symbol": "..." (if applicable)}},
+    ...
+  ],
+  "relationships": [
+    {{"from_id": "...", "type": "...", "to_id": "...", "evidence": "the text that shows this"}},
+    ...
+  ]
+}}
+
+Only extract what is explicitly present. Do not infer.
+"""
+
+DESCRIBE_FIGURE_PROMPT = """
+This is Figure {figure_number}: "{figure_title}" from {document_name}.
+
+Generate:
+1. A detailed description of what this figure shows
+2. Keywords that someone might search for to find this figure
+3. Any values, dimensions, or coefficients visible
+
+Return JSON:
+{{
+  "description": "...",
+  "keywords": ["...", "..."],
+  "values_shown": ["...", "..."]
+}}
+"""
+
+# =============================================================================
+# QUERY PROMPTS
+# =============================================================================
+
+PARSE_QUERY_PROMPT = """
+Parse this construction code query into structured concepts.
+
+Query: "{query}"
+
+Return JSON:
+{{
+  "seeking": [
+    {{"type": "Parameter|Table|Clause|Procedure|Requirement", "value": "...", "aliases": ["..."]}}
+  ],
+  "conditions": [
+    {{"type": "LoadType|Material|StructureType|Location", "value": "...", "aliases": ["..."]}}
+  ],
+  "intent": "lookup_value | find_procedure | check_applicability | find_requirements"
+}}
+
+Common aliases to consider:
+- "dead load" = "permanent action" = "self-weight"
+- "live load" = "variable action" = "imposed load"
+- "safety factor" = "partial factor"
+- "γG" = "gamma G" = "partial factor for permanent actions"
+"""
+
+DECOMPOSE_QUERY_PROMPT = """
+Query: "{query}"
+
+If this query asks multiple distinct things, break it into separate subquestions.
+If it's a single question, return it as-is.
+
+Return JSON:
+{{"subquestions": ["...", "..."]}}
+"""
+
+LLM_REVIEW_PROMPT = """
+You are reviewing search results for a construction design code query.
+
+## Query
+{query}
+
+## Retrieved Content
+{chunks_text}
+
+## Tables Retrieved
+{tables_text}
+
+## Figures Retrieved
+{figures_text}
+
+## References Already Followed
+{followed_refs}
+
+## Your Tasks
+
+1. **RELEVANT**: Which chunks are relevant? Return their IDs.
+
+2. **UNFOLLOWED REFERENCES**: In the relevant content, are there references to other clauses/tables/figures/documents NOT in "References Already Followed"?
+
+   For each:
+   - ref: The reference text (e.g., "Table 4.2", "see Section 5.3")
+   - source_chunk_id: Which chunk contains this reference
+   - why_needed: Brief reason
+
+3. **SURROUNDING CONTENT**: Do any chunks say "see above", "see below", "following table", etc.?
+
+   For each:
+   - chunk_id: The chunk
+   - direction: "before" | "after"
+
+4. **COMPLETENESS**: Can you answer the query with current content?
+   - answer: "yes" | "partial" | "no"
+   - missing: What's missing (if not yes)
+
+Return JSON:
+{{
+  "relevant_chunk_ids": ["..."],
+  "unfollowed_references": [
+    {{"ref": "...", "source_chunk_id": "...", "why_needed": "..."}}
+  ],
+  "surrounding_content_needed": [
+    {{"chunk_id": "...", "direction": "..."}}
+  ],
+  "completeness": {{"answer": "...", "missing": "..."}}
+}}
+"""
+
+FORMAT_ANSWER_PROMPT = """
+Generate a final answer for this construction code query.
+
+## Query
+{query}
+
+## Relevant Content
+{relevant_chunks}
+
+## Relevant Tables
+{relevant_tables}
+
+## Relevant Figures
+(See images attached)
+
+## Reference Chain
+{reference_chain}
+
+## Conflicts Detected
+{conflicts}
+
+## Unresolved References
+{unresolved}
+
+Generate a clear, structured answer that:
+1. Directly answers the query
+2. Cites specific sources (document, clause/table number, page)
+3. Includes relevant table data
+4. Explains any figures
+5. Notes any conflicts or unresolved references
+
+Use markdown formatting.
+"""
+```
 
 ---
 
@@ -13,1397 +292,881 @@ A system to search construction design code PDFs, follow reference chains across
 ### 1.1 PDF Parsing & Text Extraction
 
 **Libraries:**
-- `pymupdf` (fitz) - primary PDF parsing, text extraction with position data
-- `pdfplumber` - fallback for complex layouts, better table detection
-- `pytesseract` + `pdf2image` - OCR fallback for scanned documents
+- `pymupdf` (fitz) - PDF parsing, text extraction, image extraction
+- `pdfplumber` - table detection fallback
+- `camelot-py` - table extraction
 
-**Process:**
 ```python
-# For each PDF:
-1. Extract raw text with bounding boxes (position on page)
-2. Detect document structure:
-   - Title, headers, section numbers (regex + font size analysis)
-   - Paragraphs, lists
-   - Tables (see 1.3)
-   - Figures/diagrams (see 1.4)
-3. Build document hierarchy:
-   - Chapter → Section → Clause → Paragraph
-4. Output: structured JSON per document
-```
+# preprocess.py
 
-**Output structure:**
-```json
-{
-  "document_id": "BS_EN_1990_2002",
-  "title": "Eurocode - Basis of structural design",
-  "sections": [
-    {
-      "id": "section_5",
-      "number": "5",
-      "title": "Structural analysis",
-      "clauses": [
-        {
-          "id": "clause_5_3_2",
-          "number": "5.3.2",
-          "title": "Load combinations",
-          "text": "...",
-          "page": 34,
-          "bbox": [x1, y1, x2, y2]
-        }
-      ]
+def extract_document_structure(pdf_path: str) -> dict:
+    """
+    Extract text, structure, tables, and figures from PDF.
+    """
+    doc = fitz.open(pdf_path)
+
+    structure = {
+        "document_id": generate_id(pdf_path),
+        "filename": os.path.basename(pdf_path),
+        "pages": [],
+        "sections": [],
+        "tables": [],
+        "figures": []
     }
-  ]
-}
+
+    for page_num, page in enumerate(doc):
+        # Extract text with position
+        blocks = page.get_text("dict")["blocks"]
+
+        # Detect section headers (larger font, numbered)
+        # Detect tables (ruled areas)
+        # Detect figures (image objects + "Figure X" captions)
+
+    return structure
 ```
 
-### 1.2 Chunking Strategy
+### 1.2 Chunking
 
-**Approach:** Semantic chunking based on document structure, not arbitrary token windows.
+**Strategy:** Respect document structure. Chunk at clause/section boundaries.
 
-**Chunk boundaries:**
-- Prefer: clause/section boundaries
-- Max size: ~500 tokens
-- Min size: ~100 tokens
-- If clause exceeds max, split at paragraph boundaries
-- Never split mid-sentence or mid-table
+```python
+def chunk_document(structure: dict) -> list[dict]:
+    """
+    Create searchable chunks from document structure.
+    """
+    chunks = []
 
-**Libraries:**
-- `langchain.text_splitter.RecursiveCharacterTextSplitter` - with custom separators
-- Or custom chunker respecting document structure
+    for section in structure["sections"]:
+        text = section["text"]
 
-**Chunk metadata:**
-```json
-{
-  "chunk_id": "chunk_001",
-  "document_id": "BS_EN_1990_2002",
-  "section_id": "clause_5_3_2",
-  "page": 34,
-  "position_in_section": 0,
-  "text": "...",
-  "preceding_chunk_id": null,
-  "following_chunk_id": "chunk_002"
-}
+        # If section fits in one chunk, keep it whole
+        if count_tokens(text) <= CHUNK_MAX_TOKENS:
+            chunks.append({
+                "chunk_id": f"{structure['document_id']}_chunk_{len(chunks)}",
+                "document_id": structure["document_id"],
+                "section_id": section["id"],
+                "section_number": section["number"],
+                "page": section["page"],
+                "text": text,
+                "preceding_chunk_id": chunks[-1]["chunk_id"] if chunks else None,
+                "following_chunk_id": None  # Set after
+            })
+        else:
+            # Split at paragraph boundaries
+            sub_chunks = split_at_paragraphs(text, CHUNK_MAX_TOKENS)
+            for sub in sub_chunks:
+                # ... similar structure
+                pass
+
+    # Link following_chunk_ids
+    for i, chunk in enumerate(chunks[:-1]):
+        chunk["following_chunk_id"] = chunks[i + 1]["chunk_id"]
+
+    return chunks
 ```
 
 ### 1.3 Table Extraction
 
-**Critical for construction codes.** Tables contain factors, coefficients, limits.
+**Store full table data for output, plus searchable text for retrieval.**
 
-**Libraries:**
-- `camelot-py` - best for bordered tables
-- `tabula-py` - good for simple tables
-- `pdfplumber` - fallback, handles complex layouts
-- `img2table` - for tables that are images
-
-**Process:**
 ```python
-1. Detect tables in PDF (camelot.read_pdf with flavor='lattice' and 'stream')
-2. Extract as structured data:
-   - Headers (column names)
-   - Row labels
-   - Cell values
-   - Spanning cells
-3. Store table caption/title (usually text above table)
-4. Create searchable text representation:
-   "Table NA.A1.2: Partial factors for actions.
-    Columns: Action type, γG unfavourable, γG favourable...
-    Row 1: Permanent actions, 1.35, 1.00..."
-5. Store structured data for programmatic lookup
+def extract_tables(pdf_path: str, structure: dict) -> list[dict]:
+    """
+    Extract tables as structured data.
+    """
+    tables = []
+
+    # Use camelot for bordered tables
+    camelot_tables = camelot.read_pdf(pdf_path, pages="all", flavor="lattice")
+
+    for table in camelot_tables:
+        df = table.df
+
+        # Find caption (text above table containing "Table X")
+        caption = find_table_caption(structure, table.page, table.bbox)
+
+        tables.append({
+            "table_id": f"{structure['document_id']}_table_{len(tables)}",
+            "document_id": structure["document_id"],
+            "number": extract_table_number(caption),  # e.g., "NA.A1.2"
+            "title": caption,
+            "page": table.page,
+            "headers": df.iloc[0].tolist(),
+            "rows": [
+                {"label": row[0], "values": row[1:].tolist()}
+                for _, row in df.iloc[1:].iterrows()
+            ],
+            "full_markdown": df.to_markdown(),  # For output
+            "searchable_text": f"{caption} {df.to_string()}"  # For search
+        })
+
+    return tables
 ```
 
-**Table storage:**
-```json
-{
-  "table_id": "table_NA_A1_2",
-  "document_id": "BS_EN_1990_2002",
-  "number": "NA.A1.2",
-  "title": "Design values of actions (STR/GEO) (Set B)",
-  "page": 28,
-  "caption": "Table NA.A1.2(B) - Design values of actions...",
-  "headers": ["Action", "γ unfavourable", "γ favourable"],
-  "rows": [
-    {"label": "Permanent", "values": ["1.35", "1.00"]},
-    {"label": "Variable", "values": ["1.50", "0.00"]}
-  ],
-  "searchable_text": "Table NA.A1.2 Design values... Permanent 1.35 1.00...",
-  "conditions": "For STR/GEO limit state, Set B"
-}
-```
+### 1.4 Figure Extraction with LLM Description
 
-### 1.4 Diagram & Figure Extraction
+**Extract images, then use LLM to generate searchable description.**
 
-**Diagrams contain critical information:** load diagrams, structural details, flowcharts, maps.
-
-**Libraries:**
-- `pymupdf` (fitz) - extract embedded images
-- `pdf2image` - render pages as images, crop figure regions
-- `PIL/Pillow` - image processing
-- `CLIP` (openai/clip-vit-base-patch32) - multimodal embeddings for images
-
-**Process:**
 ```python
-1. Detect figures in PDF:
-   - Look for "Figure X.Y" captions in text
-   - Detect image objects in PDF structure
-   - Detect large whitespace regions (often diagrams)
+def extract_figures(pdf_path: str, structure: dict) -> list[dict]:
+    """
+    Extract figures and generate LLM descriptions for searchability.
+    """
+    doc = fitz.open(pdf_path)
+    figures = []
 
-2. Extract figure images:
-   - If embedded image: extract directly via pymupdf
-   - If vector graphic or complex: render page region as image via pdf2image
+    for page_num, page in enumerate(doc):
+        # Find images
+        images = page.get_images()
 
-3. Extract metadata:
-   - Figure number and title (from caption)
-   - Surrounding text (context)
-   - Page number
+        for img_index, img in enumerate(images):
+            # Extract image
+            xref = img[0]
+            pix = fitz.Pixmap(doc, xref)
 
-4. Create searchable representation:
-   - Caption text (for BM25)
-   - Caption embedding (for semantic search)
-   - OPTIONAL: CLIP embedding of image (for visual search)
-   - OPTIONAL: LLM-generated description of figure
+            # Find caption
+            caption = find_figure_caption(page, img)
 
-5. Store image file for later retrieval
+            # Save image
+            image_path = f"{FIGURES_DIR}/{structure['document_id']}_fig_{page_num}_{img_index}.png"
+            pix.save(image_path)
+
+            # Generate LLM description for searchability
+            description_data = generate_figure_description(image_path, caption, structure["filename"])
+
+            figures.append({
+                "figure_id": f"{structure['document_id']}_fig_{page_num}_{img_index}",
+                "document_id": structure["document_id"],
+                "number": extract_figure_number(caption),
+                "title": caption,
+                "page": page_num + 1,
+                "image_path": image_path,
+                "description": description_data["description"],
+                "keywords": description_data["keywords"],
+                "searchable_text": f"{caption} {description_data['description']} {' '.join(description_data['keywords'])}"
+            })
+
+    return figures
+
+
+def generate_figure_description(image_path: str, caption: str, document_name: str) -> dict:
+    """
+    Use LLM to describe figure for better searchability.
+    """
+    image_data = load_image_as_base64(image_path)
+
+    prompt = DESCRIBE_FIGURE_PROMPT.format(
+        figure_number=extract_figure_number(caption),
+        figure_title=caption,
+        document_name=document_name
+    )
+
+    response = call_gemini(prompt, images=[image_data])
+    return json.loads(response)
 ```
-
-**Figure storage:**
-```json
-{
-  "figure_id": "figure_5_1",
-  "document_id": "BS_EN_1991_1_3",
-  "number": "5.1",
-  "title": "Snow load shape coefficients",
-  "caption": "Figure 5.1 - Shape coefficients for snow loads on roofs",
-  "page": 14,
-  "image_path": "figures/BS_EN_1991_1_3/figure_5_1.png",
-  "surrounding_text": "The shape coefficient μ depends on the roof geometry...",
-  "searchable_text": "Figure 5.1 Snow load shape coefficients roof geometry μ...",
-  "llm_description": null  // Populated on-demand or in batch
-}
-```
-
-**At query time:**
-- If a figure is retrieved as relevant, load the image and pass to multimodal LLM (Claude) for interpretation
-- LLM can describe what the diagram shows, read values from charts, explain procedures
 
 ### 1.5 Embedding Generation
 
-**Libraries:**
-- `sentence-transformers` - local embeddings (e.g., all-MiniLM-L6-v2, all-mpnet-base-v2)
-- `openai` - text-embedding-3-small or text-embedding-3-large
-- `cohere` - embed-english-v3.0
-- `CLIP` - for image embeddings
+**Local embeddings with sentence-transformers, stored in ChromaDB.**
 
-**What gets embedded:**
-```
-- Every text chunk → embedding
-- Every table's searchable_text → embedding
-- Every figure's caption + surrounding_text → embedding
-- OPTIONAL: figure images → CLIP embedding
-```
-
-**Storage:**
-- `chromadb` - simple, local, good for prototyping
-- `pgvector` (PostgreSQL extension) - production, combines with relational data
-- `qdrant` - good performance, filtering support
-- `pinecone` - managed, scalable
-
-**Embedding metadata:**
-```json
-{
-  "embedding_id": "emb_001",
-  "source_type": "chunk|table|figure",
-  "source_id": "chunk_001",
-  "document_id": "BS_EN_1990_2002",
-  "text": "...",
-  "embedding": [0.23, -0.41, ...],
-  "page": 34
-}
-```
-
-### 1.6 Knowledge Graph Construction
-
-#### 1.6.1 Entity Types
-
-```yaml
-Document:
-  - id, title, code_number, version, publication_date, status
-
-Clause:
-  - id, number, title, document_id, page, text_summary
-
-Table:
-  - id, number, title, document_id, page, structured_data
-
-Figure:
-  - id, number, title, document_id, page, image_path
-
-Parameter:
-  - id, name, symbol, unit, description
-  - e.g., "partial factor for permanent actions", "γG", "-"
-
-Value:
-  - id, numeric_value, unit, parameter_id, conditions
-
-Concept:
-  - id, name, aliases[], category
-  - e.g., name="dead load", aliases=["permanent action", "self-weight"]
-
-Material:
-  - id, name, properties{}
-
-StructureType:
-  - id, name, category
-  - e.g., "bridge", "building", "retaining wall"
-
-LoadType:
-  - id, name, category, aliases[]
-  - e.g., "dead load", "live load", "wind load", "snow load"
-```
-
-#### 1.6.2 Relationship Types
-
-```yaml
-REFERENCES:
-  - from: Clause|Table
-  - to: Clause|Table|Figure|Document
-  - e.g., Clause 5.3.2 REFERENCES Table NA.A1.2
-
-DEFINED_IN:
-  - from: Parameter|Concept|Value
-  - to: Clause|Table
-  - e.g., γG DEFINED_IN Clause 6.4.3.2
-
-HAS_VALUE:
-  - from: Parameter
-  - to: Value
-  - properties: conditions[]
-  - e.g., γG HAS_VALUE 1.35 (when unfavourable)
-
-VALID_WHEN:
-  - from: Value
-  - to: Condition (embedded or node)
-  - e.g., 1.35 VALID_WHEN {effect: "unfavourable", action: "permanent"}
-
-APPLIES_TO:
-  - from: Clause|Document|Parameter
-  - to: StructureType|Material|LoadType
-  - e.g., BS EN 1991-2 APPLIES_TO "bridge"
-
-PART_OF:
-  - from: Clause|Table|Figure
-  - to: Document|Section
-  - e.g., Clause 5.3.2 PART_OF Section 5
-
-SUPERSEDES:
-  - from: Document
-  - to: Document
-  - e.g., BS EN 1990:2002+A1:2005 SUPERSEDES BS EN 1990:2002
-
-MODIFIES:
-  - from: Document (National Annex)
-  - to: Clause|Table|Value
-  - properties: modification_type
-  - e.g., UK NA MODIFIES Table A1.2 (replaces values)
-
-EQUIVALENT_TO:
-  - from: Concept
-  - to: Concept
-  - e.g., "dead load" EQUIVALENT_TO "permanent action"
-```
-
-#### 1.6.3 Extraction Method
-
-**Libraries:**
-- `Claude API` or `OpenAI API` - for LLM extraction
-- `spaCy` - NER for basic entity recognition
-- `neo4j` - graph database
-- `networkx` - in-memory graph for prototyping
-
-**Extraction prompt:**
-```
-You are extracting entities and relationships from a construction design code.
-
-Document: {document_name}
-Section: {section_number} - {section_title}
-Text:
-"""
-{section_text}
-"""
-
-Extract all entities and relationships. Return JSON:
-{
-  "entities": [
-    {"type": "Parameter", "name": "...", "symbol": "...", "id": "..."},
-    {"type": "Table", "number": "...", "title": "...", "id": "..."},
-    ...
-  ],
-  "relationships": [
-    {"from_id": "...", "type": "REFERENCES", "to_id": "...", "to_type": "Table", "confidence": 0.95, "evidence": "see Table 4.2"},
-    ...
-  ]
-}
-
-Rules:
-- Include confidence score (0-1) for each relationship
-- Include evidence (the text that supports the relationship)
-- For references to other documents, include document name/number
-- Extract parameter symbols (γG, fck, etc.) as separate entities
-- Link values to their conditions (e.g., "1.35 for unfavourable")
-```
-
-**Validation pass:**
 ```python
-def validate_extraction(extracted, document):
-    validated = []
-    flagged_for_review = []
+from sentence_transformers import SentenceTransformer
+import chromadb
 
-    for rel in extracted["relationships"]:
-        # Check 1: Does target exist?
-        if rel["type"] == "REFERENCES":
-            target_exists = verify_reference_target(rel["to_id"], document)
-            if not target_exists:
-                rel["confidence"] *= 0.3
+def build_embeddings(chunks: list, tables: list, figures: list):
+    """
+    Generate embeddings for all searchable content.
+    """
+    model = SentenceTransformer(EMBEDDING_MODEL)
+    client = chromadb.PersistentClient(path=CHROMA_PATH)
+    collection = client.get_or_create_collection("construction_codes")
 
-        # Check 2: Cross-validate with regex
-        if rel["type"] == "REFERENCES":
-            regex_refs = extract_references_regex(document.text)
-            if rel["to_id"] in regex_refs:
-                rel["confidence"] = min(1.0, rel["confidence"] * 1.2)
+    # Embed chunks
+    for chunk in chunks:
+        embedding = model.encode(chunk["text"]).tolist()
+        collection.add(
+            ids=[chunk["chunk_id"]],
+            embeddings=[embedding],
+            documents=[chunk["text"]],
+            metadatas=[{
+                "type": "chunk",
+                "document_id": chunk["document_id"],
+                "page": chunk["page"]
+            }]
+        )
 
-        # Check 3: Table/Figure numbers should match pattern
-        if "table" in rel["to_id"].lower():
-            if not re.match(r"table[_\s]?\d+\.?\d*", rel["to_id"], re.I):
-                rel["confidence"] *= 0.7
+    # Embed tables (searchable text)
+    for table in tables:
+        embedding = model.encode(table["searchable_text"]).tolist()
+        collection.add(
+            ids=[table["table_id"]],
+            embeddings=[embedding],
+            documents=[table["searchable_text"]],
+            metadatas=[{
+                "type": "table",
+                "document_id": table["document_id"],
+                "page": table["page"]
+            }]
+        )
 
-        # Route based on confidence
-        if rel["confidence"] >= 0.85:
-            validated.append(rel)
-        elif rel["confidence"] >= 0.5:
-            flagged_for_review.append(rel)
-        # else: discard
-
-    return validated, flagged_for_review
+    # Embed figures (searchable text from LLM description)
+    for figure in figures:
+        embedding = model.encode(figure["searchable_text"]).tolist()
+        collection.add(
+            ids=[figure["figure_id"]],
+            embeddings=[embedding],
+            documents=[figure["searchable_text"]],
+            metadatas=[{
+                "type": "figure",
+                "document_id": figure["document_id"],
+                "page": figure["page"]
+            }]
+        )
 ```
 
-#### 1.6.4 Graph Storage
+### 1.6 Knowledge Graph
 
-**Option A: Neo4j (recommended for production)**
-```cypher
-// Create entities
-CREATE (c:Clause {id: "clause_5_3_2", number: "5.3.2", title: "Load combinations", document: "BS_EN_1990"})
-CREATE (t:Table {id: "table_NA_A1_2", number: "NA.A1.2", title: "Design values of actions"})
-CREATE (p:Parameter {id: "gamma_G", name: "partial factor for permanent actions", symbol: "γG"})
+**NetworkX for simplicity. JSON persistence.**
 
-// Create relationships
-MATCH (c:Clause {id: "clause_5_3_2"}), (t:Table {id: "table_NA_A1_2"})
-CREATE (c)-[:REFERENCES {confidence: 0.95, evidence: "see Table NA.A1.2"}]->(t)
-```
+```python
+# knowledge_graph.py
 
-**Option B: PostgreSQL + Apache AGE (graph extension)**
-- Familiar SQL + graph queries
-- Single database for everything
+import networkx as nx
 
-**Option C: NetworkX + JSON (prototyping)**
-- In-memory, simple
-- Export to JSON for persistence
+def build_knowledge_graph(chunks: list, tables: list, figures: list) -> nx.DiGraph:
+    """
+    Extract entities and relationships, build graph.
+    """
+    G = nx.DiGraph()
 
-### 1.7 Chunk-Entity Mapping
+    # Add document structure as nodes
+    for chunk in chunks:
+        G.add_node(chunk["chunk_id"], type="chunk", **chunk)
 
-**Purpose:** Connect searchable chunks to graph entities (many-to-many).
+    for table in tables:
+        G.add_node(table["table_id"], type="table", **table)
 
-**Storage:**
-```sql
-CREATE TABLE chunk_entity_map (
-    chunk_id VARCHAR,
-    entity_id VARCHAR,
-    entity_type VARCHAR,  -- Clause, Table, Parameter, etc.
-    relation VARCHAR,     -- 'defines', 'mentions', 'contains', 'part_of'
-    PRIMARY KEY (chunk_id, entity_id)
-);
-```
+    for figure in figures:
+        G.add_node(figure["figure_id"], type="figure", **figure)
 
-**Population:**
-- When extracting entities, note which chunk they came from
-- When chunking, check which entities are mentioned in each chunk
-- Use regex + entity name matching
+    # Extract entities and relationships via LLM
+    for chunk in chunks:
+        extracted = extract_entities_llm(chunk)
 
-### 1.8 Alias / Synonym Index
+        for entity in extracted["entities"]:
+            G.add_node(entity["id"], **entity)
 
-**Purpose:** Map equivalent terms for query expansion and graph lookup.
+        for rel in extracted["relationships"]:
+            G.add_edge(
+                rel["from_id"],
+                rel["to_id"],
+                type=rel["type"],
+                evidence=rel["evidence"]
+            )
 
-```json
-{
-  "aliases": {
-    "dead load": ["permanent action", "self-weight", "G", "Gk"],
-    "live load": ["variable action", "imposed load", "Q", "Qk"],
-    "safety factor": ["partial factor", "γ", "gamma"],
-    "BS EN 1990": ["EN 1990", "Eurocode 0", "EC0", "Basis of design"],
-    "γG": ["gamma G", "gamma_G", "partial factor for permanent actions"]
-  }
-}
-```
+    return G
 
-**Libraries:**
-- Custom dictionary (manual + LLM-assisted generation)
-- `nltk.corpus.wordnet` - general synonyms (limited use for technical terms)
 
-### 1.9 Document Section Index
+def extract_entities_llm(chunk: dict) -> dict:
+    """
+    Use LLM to extract entities and relationships from chunk.
+    """
+    prompt = EXTRACT_ENTITIES_PROMPT.format(
+        document_name=chunk["document_id"],
+        section_number=chunk.get("section_number", ""),
+        section_title=chunk.get("section_title", ""),
+        section_text=chunk["text"]
+    )
 
-**Purpose:** Enable "jump to section" functionality.
+    response = call_gemini(prompt)
+    return json.loads(response)
 
-```json
-{
-  "document_id": "BS_EN_1990_2002",
-  "sections": [
-    {
-      "identifier": "Section 5",
-      "aliases": ["5", "Structural analysis"],
-      "page_start": 31,
-      "page_end": 38,
-      "chunk_ids": ["chunk_045", "chunk_046", ...]
-    },
-    {
-      "identifier": "Clause 5.3.2",
-      "aliases": ["5.3.2", "Load combinations"],
-      "page_start": 34,
-      "page_end": 35,
-      "chunk_ids": ["chunk_052"]
-    },
-    {
-      "identifier": "Table NA.A1.2",
-      "aliases": ["NA.A1.2", "Table NA.A1.2(B)"],
-      "page": 28,
-      "chunk_ids": ["chunk_030"]
-    }
-  ]
-}
+
+def save_graph(G: nx.DiGraph, path: str = GRAPH_PATH):
+    """Save graph to JSON."""
+    data = nx.node_link_data(G)
+    with open(path, "w") as f:
+        json.dump(data, f)
+
+
+def load_graph(path: str = GRAPH_PATH) -> nx.DiGraph:
+    """Load graph from JSON."""
+    with open(path) as f:
+        data = json.load(f)
+    return nx.node_link_graph(data)
 ```
 
 ---
 
 ## Part 2: Query-Time Algorithm
 
-### 2.0 Query Decomposition
+### Overview
 
-**For complex queries, break into subquestions first.**
+```
+1. Decompose query into subquestions (if needed)
+2. Parse query → structured concepts
+3. Search (parallel): BM25 + Embeddings + Graph lookup
+4. Map results to graph entry nodes
+5. Traverse graph from entry nodes
+6. Gather all reached content (chunks, tables, figures)
+7. LLM review: filter relevant, find unfollowed references
+8. If incomplete: follow references, get surrounding content, loop to step 7
+9. Format final answer with full tables and figures
+```
+
+### 2.1 Main Query Loop
 
 ```python
-def decompose_query(query: str) -> List[str]:
+# query.py
+
+def query(user_query: str) -> str:
     """
-    Input: "Do I need snow loading? What steps to check this?"
-    Output: [
-        "Does snow loading apply to my structure?",
-        "What is the procedure to calculate snow loads?",
-        "What code sections cover snow loading?"
-    ]
+    Main entry point for queries.
     """
-    prompt = f"""
-    Query: {query}
-
-    If this query asks multiple things, break it into separate subquestions.
-    If it's a single question, return it as-is.
-
-    Return as JSON: {{"subquestions": ["...", "..."]}}
-    """
-    return llm_call(prompt)["subquestions"]
-```
-
-**Process each subquestion through steps 1-7, then merge results.**
-
-### 2.1 Parse Query → Structured Concepts
-
-```python
-def parse_query(query: str) -> QueryConcepts:
-    prompt = f"""
-    Parse this construction code query into structured concepts.
-
-    Query: "{query}"
-
-    Return JSON:
-    {{
-      "seeking": [
-        {{"type": "Parameter|Table|Clause|Procedure|Requirement", "value": "...", "aliases": [...]}}
-      ],
-      "conditions": [
-        {{"type": "LoadType|Material|StructureType|Location|UseCase", "value": "...", "aliases": [...]}}
-      ],
-      "intent": "lookup_value | find_procedure | check_applicability | find_requirements"
-    }}
-
-    Use the following alias mappings for expansion:
-    {ALIAS_INDEX}
-    """
-    return llm_call(prompt)
-```
-
-**Example:**
-```
-Query: "factors of safety for dead loads for a concrete bridge"
-
-Output:
-{
-  "seeking": [
-    {"type": "Parameter", "value": "factor of safety", "aliases": ["partial factor", "γG", "gamma"]}
-  ],
-  "conditions": [
-    {"type": "LoadType", "value": "dead load", "aliases": ["permanent action", "self-weight"]},
-    {"type": "Material", "value": "concrete", "aliases": []},
-    {"type": "StructureType", "value": "bridge", "aliases": []}
-  ],
-  "intent": "lookup_value"
-}
-```
-
-### 2.2 Search (Parallel)
-
-Run three searches simultaneously:
-
-```python
-async def search_all(concepts: QueryConcepts) -> SearchResults:
-    # Build search terms from concepts + aliases
-    search_terms = flatten([c["value"]] + c["aliases"] for c in concepts.all())
-
-    # Run in parallel
-    bm25_results, embedding_results, graph_results = await asyncio.gather(
-        bm25_search(search_terms),
-        embedding_search(concepts),
-        graph_lookup(concepts)
-    )
-
-    return SearchResults(bm25_results, embedding_results, graph_results)
-```
-
-#### 2.2.1 BM25 / Keyword Search
-
-**Libraries:**
-- `rank_bm25` - pure Python BM25
-- `elasticsearch` - full-featured, scalable
-- `whoosh` - pure Python, simple
-- `tantivy` (via `tantivy-py`) - fast, Rust-based
-
-```python
-def bm25_search(terms: List[str], top_k: int = 20) -> List[ChunkID]:
-    """
-    Search chunk text, table searchable_text, figure captions.
-    """
-    query = " OR ".join(terms)
-    results = bm25_index.search(query, top_k=top_k)
-    return [r.chunk_id for r in results]
-```
-
-#### 2.2.2 Embedding Search
-
-```python
-def embedding_search(concepts: QueryConcepts, top_k: int = 20) -> List[ChunkID]:
-    """
-    Semantic search using query embedding.
-    """
-    # Construct semantic query
-    query_text = f"{concepts.intent}: {' '.join(c['value'] for c in concepts.all())}"
-    query_embedding = embed(query_text)
-
-    results = vector_db.search(query_embedding, top_k=top_k)
-    return [r.chunk_id for r in results]
-```
-
-#### 2.2.3 Graph Lookup
-
-```python
-def graph_lookup(concepts: QueryConcepts) -> List[EntityID]:
-    """
-    Find entities matching concept values or aliases.
-    """
-    entity_ids = []
-
-    for concept in concepts.all():
-        # Search by name/value
-        matches = graph.find_nodes(
-            name_contains=concept["value"],
-            type=concept["type"]
-        )
-        entity_ids.extend(matches)
-
-        # Search by aliases
-        for alias in concept["aliases"]:
-            matches = graph.find_nodes(name_contains=alias)
-            entity_ids.extend(matches)
-
-    return list(set(entity_ids))
-```
-
-### 2.3 Map to Entry Nodes
-
-```python
-def get_entry_nodes(search_results: SearchResults) -> List[EntityID]:
-    """
-    Convert chunk IDs to entity IDs, union with direct graph results.
-    """
-    # Map chunks to entities
-    chunk_entity_ids = []
-    for chunk_id in search_results.bm25 + search_results.embedding:
-        entity_ids = chunk_entity_map.get_entities(chunk_id)
-        chunk_entity_ids.extend(entity_ids)
-
-    # Union with direct graph lookup
-    all_entry_nodes = set(chunk_entity_ids) | set(search_results.graph)
-
-    return list(all_entry_nodes)
-```
-
-### 2.4 Traverse Graph
-
-```python
-def traverse_graph(
-    entry_nodes: List[EntityID],
-    intent: str,
-    max_hops: int = 3
-) -> List[TraversalResult]:
-    """
-    BFS from entry nodes, following relevant edge types.
-    """
-    # Edge types to follow based on intent
-    edge_types = {
-        "lookup_value": ["DEFINED_IN", "HAS_VALUE", "REFERENCES", "VALID_WHEN"],
-        "find_procedure": ["REFERENCES", "PART_OF", "REQUIRES"],
-        "check_applicability": ["APPLIES_TO", "VALID_WHEN", "REFERENCES"],
-        "find_requirements": ["REFERENCES", "REQUIRES", "DEFINED_IN"]
-    }.get(intent, ["REFERENCES", "DEFINED_IN"])
-
-    visited = set()
-    results = []
-    queue = [(node_id, 0, [node_id]) for node_id in entry_nodes]  # (node, depth, path)
-
-    while queue:
-        node_id, depth, path = queue.pop(0)
-
-        if node_id in visited or depth > max_hops:
-            continue
-        visited.add(node_id)
-
-        node = graph.get_node(node_id)
-        results.append(TraversalResult(
-            entity_id=node_id,
-            entity=node,
-            depth=depth,
-            path=path  # How we got here (provenance)
-        ))
-
-        # Expand along relevant edges
-        for edge in graph.edges_from(node_id):
-            if edge.type in edge_types:
-                new_path = path + [edge.target_id]
-                queue.append((edge.target_id, depth + 1, new_path))
-
-    return results
-```
-
-### 2.5 Map Back to Text
-
-```python
-def get_chunks_for_entities(traversal_results: List[TraversalResult]) -> List[Chunk]:
-    """
-    Get actual text chunks for each reached entity.
-    """
-    chunks = []
-
-    for result in traversal_results:
-        entity_id = result.entity_id
-        entity = result.entity
-
-        # Get associated chunks
-        chunk_ids = chunk_entity_map.get_chunks(entity_id)
-
-        for chunk_id in chunk_ids:
-            chunk = chunk_store.get(chunk_id)
-            chunk.provenance = result.path  # Why this chunk was included
-            chunk.entity_type = entity.type
-            chunks.append(chunk)
-
-        # For figures, also load the image
-        if entity.type == "Figure":
-            chunk.image_path = entity.image_path
-
-    return deduplicate(chunks)
-```
-
-### 2.6 LLM Review
-
-```python
-def llm_review(
-    query: str,
-    concepts: QueryConcepts,
-    chunks: List[Chunk],
-    followed_refs: Set[str],
-    figures: List[Figure]
-) -> ReviewResult:
-
-    # Format chunks for prompt
-    chunks_text = format_chunks_with_ids(chunks)
-
-    # If there are figures, include them as images for multimodal LLM
-    images = [load_image(f.image_path) for f in figures]
-
-    prompt = f"""
-You are reviewing search results for a construction code query.
-
-## Query
-{query}
-
-## Query Intent
-{concepts.intent}
-
-## Retrieved Content
-{chunks_text}
-
-## References Already Followed
-{followed_refs}
-
-## Your Tasks
-
-1. **RELEVANT**: Which chunk IDs are relevant to answering the query? List them.
-
-2. **IRRELEVANT**: Which chunk IDs are noise? List them.
-
-3. **UNFOLLOWED REFERENCES**: In the relevant chunks, are there references to other clauses/tables/figures/documents that are NOT in "References Already Followed"?
-
-   For each, provide:
-   - ref: The reference (e.g., "Table 4.2", "BS EN 1991-1-1 Clause 3.2")
-   - source_chunk: Which chunk contains this reference
-   - why_needed: Why this reference might be needed for the query
-   - reference_type: "explicit" (e.g., "see Table 4.2") or "implicit" (e.g., "see above")
-
-4. **SURROUNDING CONTENT NEEDED**: Do any chunks reference content immediately before/after them (e.g., "see above", "following table", "as shown below")?
-
-   For each, provide:
-   - chunk_id: The chunk
-   - direction: "before" | "after" | "both"
-   - what_to_find: What type of content (table, figure, clause)
-
-5. **COMPLETENESS**: Can you fully answer the query with current chunks?
-   - answer: "yes" | "no" | "partial"
-   - if no/partial: What specific information is missing?
-
-Respond as JSON:
-{{
-  "relevant_chunk_ids": [...],
-  "irrelevant_chunk_ids": [...],
-  "unfollowed_references": [...],
-  "surrounding_content_needed": [...],
-  "completeness": {{
-    "answer": "...",
-    "missing": "..."
-  }}
-}}
-"""
-
-    # Use multimodal call if figures present
-    if images:
-        response = llm_call_multimodal(prompt, images)
-    else:
-        response = llm_call(prompt)
-
-    return parse_review_result(response)
-```
-
-### 2.7 Follow-Up Searches
-
-```python
-def follow_references(
-    review_result: ReviewResult,
-    followed_refs: Set[str],
-    chunks: List[Chunk]
-) -> Tuple[List[Chunk], Set[str]]:
-    """
-    Search for unfollowed references and surrounding content.
-    """
-    new_chunks = []
-
-    # Handle explicit references
-    for ref in review_result.unfollowed_references:
-        if ref["ref"] in followed_refs:
-            continue
-
-        followed_refs.add(ref["ref"])
-
-        # Try document section index first (fast, precise)
-        section_chunks = section_index.lookup(ref["ref"])
-
-        if section_chunks:
-            new_chunks.extend(section_chunks)
-        else:
-            # Fall back to search
-            ref_chunks = bm25_search([ref["ref"]], top_k=5)
-            ref_chunks += embedding_search_text(ref["ref"], top_k=5)
-            new_chunks.extend(ref_chunks)
-
-    # Handle surrounding content ("see above", etc.)
-    for surrounding in review_result.surrounding_content_needed:
-        chunk_id = surrounding["chunk_id"]
-        direction = surrounding["direction"]
-
-        adjacent = get_adjacent_chunks(
-            chunk_id=chunk_id,
-            direction=direction,
-            count=2  # Get 2 chunks before/after
-        )
-        new_chunks.extend(adjacent)
-
-    return deduplicate(new_chunks), followed_refs
-
-
-def get_adjacent_chunks(chunk_id: str, direction: str, count: int) -> List[Chunk]:
-    """
-    Get chunks immediately before/after a given chunk.
-    Uses chunk metadata: preceding_chunk_id, following_chunk_id
-    """
-    chunks = []
-    current = chunk_store.get(chunk_id)
-
-    if direction in ["before", "both"]:
-        prev = current
-        for _ in range(count):
-            if prev.preceding_chunk_id:
-                prev = chunk_store.get(prev.preceding_chunk_id)
-                chunks.append(prev)
-            else:
-                break
-
-    if direction in ["after", "both"]:
-        next_chunk = current
-        for _ in range(count):
-            if next_chunk.following_chunk_id:
-                next_chunk = chunk_store.get(next_chunk.following_chunk_id)
-                chunks.append(next_chunk)
-            else:
-                break
-
-    return chunks
-```
-
-### 2.8 Main Query Loop
-
-```python
-def query(user_query: str, max_iterations: int = 4) -> Answer:
-    # Step 0: Decompose if needed
+    # Load indexes
+    graph = load_graph()
+    chunks = load_chunks()
+    tables = load_tables()
+    figures = load_figures()
+
+    # Step 1: Decompose if needed
     subquestions = decompose_query(user_query)
 
     all_results = []
 
     for subquery in subquestions:
-        # Step 1: Parse
-        concepts = parse_query(subquery)
+        result = process_subquery(subquery, graph, chunks, tables, figures)
+        all_results.append(result)
 
-        # Step 2: Search
-        search_results = search_all(concepts)
+    # Step 9: Format final answer
+    return format_final_answer(user_query, all_results, tables, figures)
 
-        # Step 3: Map to entry nodes
-        entry_nodes = get_entry_nodes(search_results)
 
-        # Step 4: Traverse graph
-        traversal_results = traverse_graph(entry_nodes, concepts.intent)
+def process_subquery(query: str, graph, chunks, tables, figures) -> dict:
+    """
+    Process a single query/subquery through the full pipeline.
+    """
+    # Step 2: Parse query
+    concepts = parse_query(query)
 
-        # Step 5: Map to chunks
-        chunks = get_chunks_for_entities(traversal_results)
-        figures = [c for c in chunks if c.entity_type == "Figure"]
+    # Step 3: Search (parallel)
+    bm25_ids = bm25_search(query, concepts)
+    embedding_ids = embedding_search(query, concepts)
+    graph_ids = graph_lookup(concepts, graph)
 
-        followed_refs = set()
+    # Step 4: Map to entry nodes
+    entry_node_ids = set(bm25_ids + embedding_ids + graph_ids)
 
-        for iteration in range(max_iterations):
-            # Step 6: LLM review
-            review = llm_review(subquery, concepts, chunks, followed_refs, figures)
+    # Step 5: Traverse graph
+    reached_ids = traverse_graph(entry_node_ids, graph, concepts["intent"])
 
-            # Check if complete
-            if review.completeness.answer == "yes" and not review.unfollowed_references:
-                break
+    # Step 6: Gather content
+    reached_chunks = [c for c in chunks if c["chunk_id"] in reached_ids]
+    reached_tables = [t for t in tables if t["table_id"] in reached_ids]
+    reached_figures = [f for f in figures if f["figure_id"] in reached_ids]
 
-            # Step 7: Follow references
-            new_chunks, followed_refs = follow_references(review, followed_refs, chunks)
+    followed_refs = set()
 
-            if not new_chunks:
-                # No new content found, stop
-                break
+    # Steps 7-8: LLM review loop
+    for iteration in range(MAX_ITERATIONS):
+        review = llm_review(
+            query=query,
+            chunks=reached_chunks,
+            tables=reached_tables,
+            figures=reached_figures,
+            followed_refs=followed_refs
+        )
 
-            chunks.extend(new_chunks)
-            figures = [c for c in chunks if c.entity_type == "Figure"]
+        # Check if done
+        if review["completeness"]["answer"] == "yes" and not review["unfollowed_references"]:
+            break
 
-        # Filter to relevant chunks only
-        relevant_chunks = [c for c in chunks if c.id in review.relevant_chunk_ids]
-        all_results.append((subquery, relevant_chunks, review))
+        # Follow unfollowed references
+        for ref in review["unfollowed_references"]:
+            if ref["ref"] in followed_refs:
+                continue
 
-    # Step 8: Format final answer
-    return format_answer(user_query, all_results)
+            # Validate reference exists in source chunk (prevent hallucination)
+            source_chunk = get_chunk_by_id(ref["source_chunk_id"], chunks)
+            if not validate_reference_exists(ref["ref"], source_chunk):
+                continue
+
+            followed_refs.add(ref["ref"])
+
+            # Search for reference
+            new_ids = search_for_reference(ref["ref"])
+            new_chunks, new_tables, new_figures = gather_content(new_ids, chunks, tables, figures)
+
+            reached_chunks.extend(new_chunks)
+            reached_tables.extend(new_tables)
+            reached_figures.extend(new_figures)
+
+        # Get surrounding content
+        for surrounding in review["surrounding_content_needed"]:
+            adjacent = get_adjacent_chunks(
+                surrounding["chunk_id"],
+                surrounding["direction"],
+                chunks
+            )
+            reached_chunks.extend(adjacent)
+
+        # Deduplicate
+        reached_chunks = deduplicate_by_id(reached_chunks)
+        reached_tables = deduplicate_by_id(reached_tables)
+        reached_figures = deduplicate_by_id(reached_figures)
+
+    # Filter to relevant only
+    relevant_chunks = [c for c in reached_chunks if c["chunk_id"] in review["relevant_chunk_ids"]]
+
+    # Detect conflicts before output
+    conflicts = detect_conflicts(relevant_chunks, reached_tables)
+
+    return {
+        "query": query,
+        "chunks": relevant_chunks,
+        "tables": reached_tables,
+        "figures": reached_figures,
+        "conflicts": conflicts,
+        "followed_refs": followed_refs
+    }
 ```
 
----
-
-## Part 3: LLM Tools
-
-Tools available to the LLM during query processing:
-
-### 3.1 table_lookup
+### 2.2 Search Functions
 
 ```python
-def table_lookup(table_id: str, row_condition: str = None, column_condition: str = None) -> str:
+# search.py
+
+from rank_bm25 import BM25Okapi
+import chromadb
+from sentence_transformers import SentenceTransformer
+
+def bm25_search(query: str, concepts: dict) -> list[str]:
     """
-    Look up values in a table.
-
-    Args:
-        table_id: ID or number of the table (e.g., "NA.A1.2", "table_NA_A1_2")
-        row_condition: Row label or condition (e.g., "permanent action", "unfavourable")
-        column_condition: Column header to retrieve (e.g., "γG", "value")
-
-    Returns:
-        Matching cell value(s) or full table if no conditions
+    Keyword search using BM25.
     """
-    table = table_store.get(table_id)
+    # Build search terms from query + aliases
+    terms = [query]
+    for c in concepts["seeking"] + concepts["conditions"]:
+        terms.append(c["value"])
+        terms.extend(c.get("aliases", []))
 
-    if not row_condition and not column_condition:
-        return format_table_as_markdown(table)
+    search_text = " ".join(terms)
 
-    # Find matching rows
-    matching_rows = [r for r in table.rows if row_condition.lower() in r.label.lower()]
+    # Search chunks, tables, figures
+    results = bm25_index.search(search_text, top_k=BM25_TOP_K)
 
-    # Find matching column index
-    col_idx = None
-    if column_condition:
-        for i, header in enumerate(table.headers):
-            if column_condition.lower() in header.lower():
-                col_idx = i
-                break
+    return [r["id"] for r in results]
 
-    # Extract values
-    if col_idx is not None:
-        values = [r.values[col_idx] for r in matching_rows]
-    else:
-        values = [r.values for r in matching_rows]
 
-    return str(values)
+def embedding_search(query: str, concepts: dict) -> list[str]:
+    """
+    Semantic search using embeddings.
+    """
+    model = SentenceTransformer(EMBEDDING_MODEL)
+    client = chromadb.PersistentClient(path=CHROMA_PATH)
+    collection = client.get_collection("construction_codes")
+
+    # Build semantic query
+    query_text = f"{concepts['intent']}: {query}"
+    query_embedding = model.encode(query_text).tolist()
+
+    results = collection.query(
+        query_embeddings=[query_embedding],
+        n_results=EMBEDDING_TOP_K
+    )
+
+    return results["ids"][0]
+
+
+def graph_lookup(concepts: dict, graph: nx.DiGraph) -> list[str]:
+    """
+    Find graph nodes matching concept values/aliases.
+    """
+    matching_ids = []
+
+    for concept in concepts["seeking"] + concepts["conditions"]:
+        search_terms = [concept["value"]] + concept.get("aliases", [])
+
+        for node_id, data in graph.nodes(data=True):
+            node_text = f"{data.get('name', '')} {data.get('title', '')} {data.get('text', '')}".lower()
+
+            for term in search_terms:
+                if term.lower() in node_text:
+                    matching_ids.append(node_id)
+                    break
+
+    return list(set(matching_ids))
 ```
 
-### 3.2 get_surrounding_content
+### 2.3 Graph Traversal
 
 ```python
-def get_surrounding_content(chunk_id: str, direction: str, count: int = 2) -> List[Chunk]:
+def traverse_graph(entry_ids: set, graph: nx.DiGraph, intent: str) -> set:
     """
-    Get content immediately before/after a chunk.
-
-    Args:
-        chunk_id: The reference chunk
-        direction: "before", "after", or "both"
-        count: Number of chunks to retrieve in each direction
-
-    Returns:
-        Adjacent chunks
+    BFS from entry nodes, following relevant edge types.
     """
-    return get_adjacent_chunks(chunk_id, direction, count)
+    # Edge types to follow based on intent
+    edge_priorities = {
+        "lookup_value": ["DEFINED_IN", "HAS_VALUE", "REFERENCES"],
+        "find_procedure": ["REFERENCES", "PART_OF"],
+        "check_applicability": ["APPLIES_TO", "REFERENCES"],
+        "find_requirements": ["REFERENCES", "DEFINED_IN"]
+    }
+    edge_types = edge_priorities.get(intent, ["REFERENCES", "DEFINED_IN"])
+
+    visited = set()
+    queue = [(nid, 0) for nid in entry_ids]
+
+    while queue:
+        node_id, depth = queue.pop(0)
+
+        if node_id in visited or depth > GRAPH_MAX_HOPS:
+            continue
+
+        if node_id not in graph:
+            continue
+
+        visited.add(node_id)
+
+        # Follow edges
+        for _, target, data in graph.edges(node_id, data=True):
+            if data.get("type") in edge_types:
+                queue.append((target, depth + 1))
+
+    return visited
 ```
 
-### 3.3 jump_to_section
+### 2.4 LLM Review
 
 ```python
-def jump_to_section(document: str, section: str) -> List[Chunk]:
+def llm_review(query: str, chunks: list, tables: list, figures: list, followed_refs: set) -> dict:
     """
-    Jump to a specific section of a document.
-
-    Args:
-        document: Document name or code (e.g., "BS EN 1990", "EN 1991-1-3")
-        section: Section identifier (e.g., "5.3.2", "Section 5", "Table NA.A1.2")
-
-    Returns:
-        Chunks for that section
+    LLM reviews content and identifies gaps.
+    Figures are passed directly as images (no tool needed).
     """
-    # Normalize document name
-    doc_id = resolve_document_alias(document)
+    # Format text content
+    chunks_text = "\n\n".join([
+        f"[{c['chunk_id']}] (Page {c['page']})\n{c['text']}"
+        for c in chunks
+    ])
 
-    # Look up section
-    section_info = section_index.lookup(doc_id, section)
+    tables_text = "\n\n".join([
+        f"[{t['table_id']}] {t['title']} (Page {t['page']})\n{t['full_markdown']}"
+        for t in tables
+    ])
 
-    if section_info:
-        return [chunk_store.get(cid) for cid in section_info.chunk_ids]
+    figures_text = "\n\n".join([
+        f"[{f['figure_id']}] {f['title']} (Page {f['page']})\n{f['description']}"
+        for f in figures
+    ])
 
-    # Fallback: search within document
-    return bm25_search([section], filter_document=doc_id)
+    prompt = LLM_REVIEW_PROMPT.format(
+        query=query,
+        chunks_text=chunks_text,
+        tables_text=tables_text,
+        figures_text=figures_text,
+        followed_refs=list(followed_refs)
+    )
+
+    # Load figure images and pass directly to multimodal LLM
+    images = [load_image_as_base64(f["image_path"]) for f in figures]
+
+    response = call_gemini(prompt, images=images if images else None)
+    return json.loads(response)
 ```
 
-### 3.4 describe_figure
+### 2.5 Validation Functions
 
 ```python
-def describe_figure(figure_id: str, question: str = None) -> str:
+def validate_reference_exists(ref: str, source_chunk: dict) -> bool:
     """
-    Get LLM description/interpretation of a figure.
+    Verify that a claimed reference actually exists in the source chunk.
+    Prevents LLM hallucination of references.
 
-    Args:
-        figure_id: ID of the figure
-        question: Specific question about the figure (optional)
-
-    Returns:
-        LLM-generated description or answer
+    Called: Before searching for each reference the LLM claims to find.
     """
-    figure = figure_store.get(figure_id)
-    image = load_image(figure.image_path)
+    if not source_chunk:
+        return False
 
-    if question:
-        prompt = f"""
-        This is Figure {figure.number}: "{figure.title}" from {figure.document_id}.
+    chunk_text = source_chunk["text"].lower()
+    ref_lower = ref.lower()
 
-        Question: {question}
+    # Check exact match
+    if ref_lower in chunk_text:
+        return True
 
-        Examine the figure and answer the question. If the figure contains a chart or graph,
-        read the values. If it's a diagram, describe the relevant parts.
-        """
-    else:
-        prompt = f"""
-        This is Figure {figure.number}: "{figure.title}" from {figure.document_id}.
+    # Check without spaces
+    if ref_lower.replace(" ", "") in chunk_text.replace(" ", ""):
+        return True
 
-        Describe what this figure shows. Include:
-        - Type of figure (diagram, chart, flowchart, detail drawing, etc.)
-        - Key information conveyed
-        - Any values, dimensions, or coefficients shown
-        - How this figure would be used in practice
-        """
+    return False
 
-    return llm_call_multimodal(prompt, [image])
-```
 
----
-
-## Part 4: Output Format
-
-### 4.1 Final Answer Structure
-
-```markdown
-## Answer: "{original_query}"
-
-### Summary
-[LLM-generated direct answer to the query, synthesizing all findings]
-
----
-
-### Detailed Findings
-
-#### 1. [Topic/Subquestion 1]
-
-**Source:** {document} - {clause/table/figure} (Page {X})
-
-> [Relevant quote or rendered content]
-
-[LLM explanation of how this applies to the query]
-
-#### 2. [Topic/Subquestion 2]
-...
-
----
-
-### Tables
-
-#### Table {number}: {title}
-**Source:** {document}, Page {X}
-
-| Column 1 | Column 2 | Column 3 |
-|----------|----------|----------|
-| ...      | ...      | ...      |
-
-[Highlight relevant rows/values]
-
----
-
-### Figures
-
-#### Figure {number}: {title}
-**Source:** {document}, Page {X}
-
-![Figure description](path/to/figure.png)
-
-**Interpretation:** [LLM description of what the figure shows and how to use it]
-
----
-
-### Reference Chain
-[Show how the search progressed]
-
-```
-Query: "factors of safety for dead loads"
-  ↓
-Clause 6.4.3 (BS EN 1990) - defines partial factors
-  ↓ references
-Table NA.A1.2(B) - contains values for UK
-  ↓ references
-BS EN 1991-1-1 - for load values
-```
-
----
-
-### Sources
-
-1. BS EN 1990:2002+A1:2005 - Basis of structural design
-   - Clause 6.4.3, Page 34
-   - Table NA.A1.2(B), Page 28
-
-2. BS EN 1991-1-1:2002 - Densities, self-weight, imposed loads
-   - Clause 5.2.3, Page 12
-
----
-
-### Not Resolved (if any)
-
-The following references could not be found:
-- "Table X.Y" referenced in Clause Z (not found in available documents)
-```
-
----
-
-## Part 5: Edge Cases & Error Handling
-
-### 5.1 No Search Results
-
-```python
-if not search_results.any():
-    # Expand query using aliases
-    expanded_terms = expand_with_aliases(concepts)
-    search_results = search_all_with_terms(expanded_terms)
-
-    if not search_results.any():
-        # Try broader search
-        search_results = embedding_search(query_text_only, top_k=30)
-
-        if not search_results.any():
-            return "No relevant content found. Please rephrase your query or check that the relevant documents are indexed."
-```
-
-### 5.2 Reference Not Found
-
-```python
-def follow_reference(ref: str) -> List[Chunk]:
-    chunks = search_for_reference(ref)
-
-    if not chunks:
-        # Check for OCR/typo variants
-        variants = generate_variants(ref)  # "Table 4.2" -> ["Table 4,2", "Table4.2", "Tabie 4.2"]
-        for variant in variants:
-            chunks = search_for_reference(variant)
-            if chunks:
-                break
-
-        if not chunks:
-            # Log as unresolved
-            unresolved_refs.append({
-                "reference": ref,
-                "reason": "Not found in indexed documents"
-            })
-
-    return chunks
-```
-
-### 5.3 Conflicting Information
-
-```python
-def detect_conflicts(chunks: List[Chunk]) -> List[Conflict]:
+def detect_conflicts(chunks: list, tables: list) -> list[dict]:
     """
     Detect when same parameter has different values in different sources.
+
+    Called: Before formatting final output, to warn user of conflicts.
     """
-    values_by_parameter = defaultdict(list)
+    conflicts = []
+
+    # Simple heuristic: look for common parameters
+    parameters = ["γG", "γQ", "density", "factor"]
+
+    values_found = {}  # parameter -> [(value, source), ...]
 
     for chunk in chunks:
-        # Extract parameter-value pairs
-        pairs = extract_parameter_values(chunk)
-        for param, value, source in pairs:
-            values_by_parameter[param].append((value, source, chunk))
+        for param in parameters:
+            if param.lower() in chunk["text"].lower():
+                # Extract value near parameter (simplified)
+                # In practice, use regex or LLM extraction
+                values_found.setdefault(param, []).append({
+                    "source": chunk["chunk_id"],
+                    "document": chunk["document_id"]
+                })
 
-    conflicts = []
-    for param, entries in values_by_parameter.items():
-        unique_values = set(e[0] for e in entries)
-        if len(unique_values) > 1:
-            conflicts.append(Conflict(
-                parameter=param,
-                values=entries,
-                resolution_hint="National Annex values take precedence over base Eurocode"
-            ))
+    # Check for same param in different documents
+    for param, sources in values_found.items():
+        docs = set(s["document"] for s in sources)
+        if len(docs) > 1:
+            conflicts.append({
+                "parameter": param,
+                "found_in": list(docs),
+                "note": "Check which source applies to your specific case. National Annex values typically take precedence."
+            })
 
     return conflicts
 ```
 
-### 5.4 Max Iterations Reached
+### 2.6 Helper Functions
 
 ```python
-if iteration >= max_iterations:
-    return Answer(
-        content=format_partial_answer(chunks, review),
-        warnings=[
-            f"Search stopped after {max_iterations} iterations.",
-            f"The following references were not fully explored: {list(review.unfollowed_references)}"
-        ],
-        confidence="partial"
-    )
-```
-
-### 5.5 LLM Hallucinated Reference
-
-```python
-def validate_reference_exists(ref: str, source_chunk: Chunk) -> bool:
+def get_adjacent_chunks(chunk_id: str, direction: str, chunks: list) -> list[dict]:
     """
-    Before searching for a reference, verify it actually exists in the source chunk.
-    Prevents LLM hallucination.
+    Get chunks immediately before/after a given chunk.
     """
-    # Check if reference text appears in chunk
-    ref_patterns = [
-        ref,
-        ref.replace(" ", ""),
-        ref.lower()
-    ]
+    chunk = get_chunk_by_id(chunk_id, chunks)
+    if not chunk:
+        return []
 
-    chunk_text = source_chunk.text.lower()
+    result = []
 
-    for pattern in ref_patterns:
-        if pattern.lower() in chunk_text:
-            return True
+    if direction in ["before", "both"]:
+        prev_id = chunk.get("preceding_chunk_id")
+        for _ in range(ADJACENT_CHUNKS_COUNT):
+            if prev_id:
+                prev_chunk = get_chunk_by_id(prev_id, chunks)
+                if prev_chunk:
+                    result.append(prev_chunk)
+                    prev_id = prev_chunk.get("preceding_chunk_id")
 
-    # Reference not found in claimed source - likely hallucination
-    return False
+    if direction in ["after", "both"]:
+        next_id = chunk.get("following_chunk_id")
+        for _ in range(ADJACENT_CHUNKS_COUNT):
+            if next_id:
+                next_chunk = get_chunk_by_id(next_id, chunks)
+                if next_chunk:
+                    result.append(next_chunk)
+                    next_id = next_chunk.get("following_chunk_id")
+
+    return result
+
+
+def decompose_query(query: str) -> list[str]:
+    """Break complex query into subquestions."""
+    prompt = DECOMPOSE_QUERY_PROMPT.format(query=query)
+    response = call_gemini(prompt)
+    return json.loads(response)["subquestions"]
+
+
+def parse_query(query: str) -> dict:
+    """Parse query into structured concepts."""
+    prompt = PARSE_QUERY_PROMPT.format(query=query)
+    response = call_gemini(prompt)
+    return json.loads(response)
 ```
 
 ---
 
-## Part 6: Technology Stack Summary
+## Part 3: Output Formatting
 
-### Required Libraries
+```python
+def format_final_answer(original_query: str, results: list, all_tables: list, all_figures: list) -> str:
+    """
+    Format the final answer with full tables and figures.
+    """
+    # Gather all relevant content
+    all_chunks = []
+    all_conflicts = []
+    all_followed_refs = set()
+
+    for result in results:
+        all_chunks.extend(result["chunks"])
+        all_conflicts.extend(result["conflicts"])
+        all_followed_refs.update(result["followed_refs"])
+
+    # Get tables and figures that were referenced
+    referenced_tables = [t for t in all_tables if any(
+        t["table_id"] in c.get("text", "") or t["number"] in c.get("text", "")
+        for c in all_chunks
+    )]
+
+    referenced_figures = [f for f in all_figures if any(
+        f["figure_id"] in c.get("text", "") or f["number"] in c.get("text", "")
+        for c in all_chunks
+    )]
+
+    # Build reference chain for display
+    reference_chain = " → ".join(all_followed_refs) if all_followed_refs else "Direct search"
+
+    # Use LLM to generate formatted answer
+    prompt = FORMAT_ANSWER_PROMPT.format(
+        query=original_query,
+        relevant_chunks=format_chunks_for_prompt(all_chunks),
+        relevant_tables=format_tables_for_prompt(referenced_tables),  # Full markdown tables
+        reference_chain=reference_chain,
+        conflicts=all_conflicts,
+        unresolved=[]  # Add any unresolved refs here
+    )
+
+    # Include figure images directly
+    images = [load_image_as_base64(f["image_path"]) for f in referenced_figures]
+
+    answer = call_gemini(prompt, images=images if images else None)
+
+    # Append full tables at the end
+    if referenced_tables:
+        answer += "\n\n---\n\n## Full Tables\n\n"
+        for table in referenced_tables:
+            answer += f"### {table['title']} (Page {table['page']})\n\n"
+            answer += table["full_markdown"]
+            answer += "\n\n"
+
+    return answer
+```
+
+---
+
+## Part 4: LLM Client
+
+```python
+# utils.py
+
+import google.generativeai as genai
+from config import LLM_MODEL, LLM_TEMPERATURE
+
+def call_gemini(prompt: str, images: list = None) -> str:
+    """
+    Call Gemini Flash 2.0 with optional images.
+    """
+    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+    model = genai.GenerativeModel(LLM_MODEL)
+
+    if images:
+        # Multimodal call
+        content = [prompt]
+        for img_b64 in images:
+            content.append({
+                "mime_type": "image/png",
+                "data": img_b64
+            })
+        response = model.generate_content(content)
+    else:
+        response = model.generate_content(prompt)
+
+    return response.text
+
+
+def load_image_as_base64(image_path: str) -> str:
+    """Load image and convert to base64."""
+    import base64
+    with open(image_path, "rb") as f:
+        return base64.b64encode(f.read()).decode("utf-8")
+```
+
+---
+
+## Part 5: Requirements
 
 ```
-# PDF Processing
-pymupdf>=1.23.0           # PDF parsing, image extraction
-pdfplumber>=0.10.0        # Table detection
-camelot-py[cv]>=0.11.0    # Table extraction
-pdf2image>=1.16.0         # PDF to image conversion
-pytesseract>=0.3.10       # OCR fallback
+# requirements.txt
 
-# NLP & Embeddings
-sentence-transformers>=2.2.0   # Local embeddings
-openai>=1.0.0                  # OpenAI embeddings & LLM
-anthropic>=0.18.0              # Claude API
-tiktoken>=0.5.0                # Token counting
+# PDF Processing
+pymupdf>=1.23.0
+pdfplumber>=0.10.0
+camelot-py[cv]>=0.11.0
+
+# Embeddings & Vector Store
+sentence-transformers>=2.2.0
+chromadb>=0.4.0
 
 # Search
-rank-bm25>=0.2.2          # BM25 search
-chromadb>=0.4.0           # Vector database (dev)
-pgvector>=0.2.0           # PostgreSQL vectors (prod)
+rank-bm25>=0.2.2
 
 # Graph
-neo4j>=5.0.0              # Graph database
-networkx>=3.0             # In-memory graph
+networkx>=3.0
 
-# Web Framework
-fastapi>=0.100.0          # API
-uvicorn>=0.23.0           # Server
+# LLM
+google-generativeai>=0.3.0
 
 # Utilities
-pillow>=10.0.0            # Image processing
-numpy>=1.24.0
+pillow>=10.0.0
 pandas>=2.0.0
-pydantic>=2.0.0
-```
-
-### Infrastructure
-
-```
-Development:
-- SQLite + ChromaDB + NetworkX (local, simple)
-- Single machine
-
-Production:
-- PostgreSQL + pgvector (embeddings + relational)
-- Neo4j (graph)
-- S3/GCS (PDF & image storage)
-- Redis (caching)
 ```
 
 ---
 
-## Part 7: Test Cases
+## Part 6: Test Cases
 
-### Test Case 1: Snow Loading
+### Test 1: Snow Loading
 
 **Query:** "Do I need to apply snow loading onto my structure? What steps would I need to take to check this and what part of the code should I refer to?"
 
-**Document:** en.1991.1.3.2003_snow_loads.pdf
+**Expected output includes:**
+- Scope section (what structures snow loading applies to)
+- Calculation procedure
+- Reference to National Annex for UK snow map
+- Shape coefficient tables (full table in output)
+- Any relevant figures
 
-**Expected traversal:**
-1. Parse → seeking: procedure/requirements, conditions: snow load
-2. Find → Scope section (applicability), Section 5 (procedure)
-3. Traverse → References to National Annex (UK snow map), shape coefficient tables
-4. LLM review → Should find Figure 5.1, Tables 5.1-5.2
-
-**Expected output should include:**
-- Section 1.1 Scope - what structures snow loading applies to
-- Section 5 or equivalent - snow load calculation procedure
-- Snow load formula: s = μ × Ce × Ct × sk
-- Reference to National Annex for characteristic snow load sk
-- Shape coefficient tables/figures
-- Altitude correction if applicable
-
-### Test Case 2: Fire for Bridge
+### Test 2: Fire for Bridge
 
 **Query:** "I am designing a bridge in London UK. Should I be considering potential issues regarding fire damage to my structure?"
 
-**Document:** en.1991.1.2.2002_fire.pdf
+**Expected output includes:**
+- Scope section (does fire code apply to bridges?)
+- Clear answer: yes/no with reasoning
+- If no: what code to use instead
 
-**Expected traversal:**
-1. Parse → seeking: applicability/requirements, conditions: fire, bridge
-2. Find → Scope section
-3. LLM review → Should identify that fire code is primarily for buildings
-
-**Expected output should include:**
-- Scope section stating what structure types are covered
-- If bridges excluded: clear statement that BS EN 1991-1-2 is for buildings
-- If bridges partially covered: relevant sections
-- Possible reference to bridge-specific guidance (BD 37, etc.)
-
-### Test Case 3: Concrete Density
+### Test 3: Concrete Density
 
 **Query:** "What density should I use for reinforced concrete when calculating dead loads?"
 
-**Expected traversal:**
-1. Parse → seeking: value (density), conditions: concrete, reinforced, dead load
-2. Find → BS EN 1991-1-1 density tables
-3. Traverse → Reference chain to specific table
-
-**Expected output should include:**
-- Table with concrete densities
-- Value: 25 kN/m³ for normal weight reinforced concrete
-- Source: BS EN 1991-1-1, specific table number and page
-- Any conditions or variations (lightweight, heavyweight)
+**Expected output includes:**
+- Density value: 25 kN/m³
+- Source table (full table in output)
+- Any conditions/variations
 
 ---
 
-## Part 8: Implementation Phases
+## Part 7: Usage
 
-### Phase 1: Core Pipeline (Weeks 1-2)
-- [ ] PDF parsing and text extraction
-- [ ] Chunking with document structure
-- [ ] Basic table extraction
-- [ ] Embedding generation
-- [ ] BM25 index setup
-- [ ] Simple query → search → return results
+```bash
+# Preprocess documents
+python preprocess.py
 
-### Phase 2: Knowledge Graph (Weeks 3-4)
-- [ ] Entity extraction prompts
-- [ ] Relationship extraction
-- [ ] Graph storage (Neo4j or NetworkX)
-- [ ] Chunk-entity mapping
-- [ ] Graph traversal in query pipeline
+# Run query
+python main.py "What density should I use for reinforced concrete?"
+```
 
-### Phase 3: Figure Handling (Week 5)
-- [ ] Figure detection and extraction
-- [ ] Figure metadata indexing
-- [ ] Multimodal LLM integration for figure interpretation
+```python
+# main.py
 
-### Phase 4: LLM Review Loop (Week 6)
-- [ ] Review prompt implementation
-- [ ] Reference following logic
-- [ ] Surrounding content retrieval
-- [ ] Iteration control
+from query import query
 
-### Phase 5: Polish & Testing (Weeks 7-8)
-- [ ] Output formatting
-- [ ] Error handling
-- [ ] Edge cases
-- [ ] Test case validation
-- [ ] Performance optimization
+if __name__ == "__main__":
+    import sys
+    user_query = sys.argv[1] if len(sys.argv) > 1 else input("Query: ")
+    result = query(user_query)
+    print(result)
+```
