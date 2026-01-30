@@ -18,6 +18,13 @@ build/
 
 # OS files
 .DS_Store
+
+# Documentation/planning files
+WHAT_HAS_CHANGED.md
+CLAUDE.md
+plan.md
+detailed_plan.md
+test_queries.md
 Thumbs.db
 
 # Environment variables
