@@ -5,19 +5,19 @@ export const documents: Document[] = [
     id: 'SANS10160-1',
     name: 'SANS 10160-1 — Basis of Structural Design',
     shortName: 'SANS 10160-1',
-    pages: 5,
+    pages: 94,
   },
   {
     id: 'SANS10160-2',
     name: 'SANS 10160-2 — Self-Weight and Imposed Loads',
     shortName: 'SANS 10160-2',
-    pages: 5,
+    pages: 68,
   },
   {
     id: 'EN1991-1-1',
     name: 'EN 1991-1-1 — Actions on Structures (General)',
     shortName: 'EN 1991-1-1',
-    pages: 5,
+    pages: 146,
   },
 ];
 
