@@ -49,6 +49,33 @@ body {
   animation: highlight-pulse 2s ease-in-out infinite;
 }
 
+/* Text-based highlighting (like Word) */
+@keyframes text-highlight-glow {
+  0%, 100% {
+    box-shadow: 0 0 2px rgba(255, 193, 7, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 8px rgba(255, 193, 7, 0.8);
+  }
+}
+
+.text-highlight-ref {
+  background: linear-gradient(to bottom, rgba(255, 235, 59, 0.6) 0%, rgba(255, 193, 7, 0.5) 100%);
+  padding: 1px 2px;
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  animation: text-highlight-glow 2s ease-in-out infinite;
+}
+
+.text-highlight-search {
+  background: linear-gradient(to bottom, rgba(96, 165, 250, 0.5) 0%, rgba(59, 130, 246, 0.4) 100%);
+  padding: 1px 2px;
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
 /* Typewriter cursor */
 @keyframes blink {
   0%, 49% { opacity: 1; }

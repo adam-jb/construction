@@ -11,7 +11,8 @@ export interface Reference {
   docId: string;
   page: number;
   label: string;
-  highlightArea?: {
+  highlightText?: string[];  // Text strings to highlight on the page
+  highlightArea?: {          // Legacy: rectangle-based highlighting
     top: number;    // percentage from top
     left: number;   // percentage from left
     width: number;  // percentage width
