@@ -49,13 +49,13 @@ The ultimate limit state combination uses partial factors:
         references: [
           {
             docId: 'SANS10160-1',
-            page: 2,
+            page: 7,
             label: '[1] Table 3 — Partial factors for actions',
             highlightText: ['Table 3 — Partial factors for actions', 'Permanent (G)', 'Variable (Q)', 'γ_G = 1.2', 'γ_Q = 1.6'],
           },
           {
             docId: 'SANS10160-2',
-            page: 3,
+            page: 5,
             label: '[2] Table 1 — Imposed loads for buildings',
             highlightText: ['Table 1 — Imposed loads for buildings', 'Domestic/residential', '1.5'],
           },
@@ -82,7 +82,7 @@ Note: Detailed wind load calculations require SANS 10160-3 (Wind Actions), which
         references: [
           {
             docId: 'SANS10160-1',
-            page: 1,
+            page: 4,
             label: '[1] Clause 4.2.1 — Variable actions',
             highlightText: ['4.2.1 Variable actions', 'Variable actions are those that vary significantly', 'wind actions'],
           },
@@ -120,13 +120,13 @@ Note the differences between the two codes — SANS uses higher variable action 
         references: [
           {
             docId: 'SANS10160-1',
-            page: 2,
+            page: 7,
             label: '[1] Table 3 — Partial factors (SANS)',
             highlightText: ['Table 3 — Partial factors for actions', 'γ_G = 1.2', 'γ_G = 0.9', 'γ_Q = 1.6'],
           },
           {
             docId: 'EN1991-1-1',
-            page: 2,
+            page: 4,
             label: '[2] Table A1.2(B) — Partial factors (Eurocode)',
             highlightText: ['Table A1.2(B) — Design values of actions', 'γ_G = 1.35', 'γ_G = 1.0', 'γ_Q = 1.5'],
           },
@@ -162,7 +162,7 @@ Would you like me to find the relevant sections for slab design requirements?`,
             docId: 'SANS10160-1',
             page: 1,
             label: '[1] Scope and responsibility clauses',
-            highlightText: ['1. Scope', 'safety, serviceability and durability', 'limit state concept'],
+            highlightText: ['Scope', 'safety, serviceability and durability', 'limit state concept'],
           },
         ],
       },
@@ -190,7 +190,7 @@ You should verify these values against your specific design conditions.`,
         references: [
           {
             docId: 'SANS10160-1',
-            page: 2,
+            page: 7,
             label: '[1] Clause 8.3.1 — Load combinations',
             highlightText: ['8.3.1 Combination of actions', 'E_d = γ_G · G_k + γ_Q · Q_k', 'ultimate limit states'],
           },
