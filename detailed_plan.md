@@ -1,6 +1,14 @@
 # Construction Design Code Search System - Detailed Plan
 
 
+## Things to improve in next iteration of plan - Adam's instructions
+For embedding search (which retrieves chunks), how know how many chunks to retrieve? How many we need vary hugely across queries. So perhaps retrieve N chunks, and have an LLM evaluate how useful the least-relevant of those chunks are; if it’s still useful that means we should receive the next N chunks, and repeat until we run out of useful information.
+
+Why have GRAPH_MAX_HOPS and BM25_TOP_K? You don’t know the number of findings which will be relevant in advance or the size of the graph. I guess GRAPH_MAX_HOPS is a good heuristic, but IRL it depends on the density of the graph - if it’s not too connected we can follow as far as we like. We might also (don’t do this but add to a *to consider* section at the top of the plan) have an LLM judge how relevant each node of the knowledge graph is to the query, so we dont follow edges which aren’t relevant in the graph search - but IRL this not worth doing unless the search gets very deep.
+
+Do we want pure keyword search in addition to BM25? Give me pros and cons
+
+
 To change down the line, but not necessary until you are asked to implement this specifically. For when you return images to user pertaining to their answer at the end:                              
   - Return structured JSON with:                                     
     - answer_markdown: The text resposne                          
