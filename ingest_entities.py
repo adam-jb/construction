@@ -5,6 +5,7 @@ Extracts entities and relationships, saves as graph JSON.
 Usage:
     python ingest_entities.py pdfs/en.1991.1.1.2002.pdf
     python ingest_entities.py pdfs/en.1991.1.1.2002.pdf --max-pages 5
+    python ingest_entities.py pdfs/en.1991.1.1.2002.pdf --start-page 1 --max-pages 10
 """
 
 import os
@@ -13,13 +14,16 @@ import json
 import base64
 import fitz  # pymupdf
 from openai import OpenAI
+from dotenv import load_dotenv
+
+# Load .env file
+load_dotenv()
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
 
-# Put your OpenAI API key here, or set OPENAI_API_KEY environment variable
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "your-api-key-here")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 MODEL = "gpt-5-nano-2025-08-07"  
 CHUNK_SIZE = 3000  # characters per chunk for LLM processing
@@ -86,15 +90,20 @@ Extract ALL values. Every number with meaning = a Parameter node. Return valid J
 # FUNCTIONS
 # =============================================================================
 
-def extract_text_from_pdf(pdf_path: str, max_pages: int = None) -> list[dict]:
+def extract_text_from_pdf(pdf_path: str, start_page: int = 6, max_pages: int = None) -> list[dict]:
     """Extract text from PDF, page by page."""
     doc = fitz.open(pdf_path)
     pages = []
 
     total_pages = len(doc)
-    pages_to_process = min(total_pages, max_pages) if max_pages else total_pages
+    start_idx = start_page - 1  # Convert to 0-indexed
 
-    for page_num in range(pages_to_process):
+    if max_pages:
+        end_idx = min(total_pages, start_idx + max_pages)
+    else:
+        end_idx = total_pages
+
+    for page_num in range(start_idx, end_idx):
         page = doc[page_num]
         text = page.get_text()
         if text.strip():
@@ -107,15 +116,20 @@ def extract_text_from_pdf(pdf_path: str, max_pages: int = None) -> list[dict]:
     return pages
 
 
-def extract_images_from_pdf(pdf_path: str, max_pages: int = None) -> list[dict]:
+def extract_images_from_pdf(pdf_path: str, start_page: int = 6, max_pages: int = None) -> list[dict]:
     """Extract images (figures, charts, graphs) from PDF."""
     doc = fitz.open(pdf_path)
     images = []
 
     total_pages = len(doc)
-    pages_to_process = min(total_pages, max_pages) if max_pages else total_pages
+    start_idx = start_page - 1  # Convert to 0-indexed
 
-    for page_num in range(pages_to_process):
+    if max_pages:
+        end_idx = min(total_pages, start_idx + max_pages)
+    else:
+        end_idx = total_pages
+
+    for page_num in range(start_idx, end_idx):
         page = doc[page_num]
         image_list = page.get_images()
 
@@ -192,7 +206,7 @@ Be exhaustive. Every fact = a node. Return valid JSON only."""
                 {"type": "image_url", "image_url": {"url": f"data:image/{ext};base64,{image_b64}"}}
             ]
         }],
-        temperature=0.1,
+        #temperature=0.1,
         response_format={"type": "json_object"}
     )
 
@@ -234,7 +248,7 @@ def extract_entities_from_chunk(client: OpenAI, text: str, doc_name: str, page: 
     response = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.1,
+        #temperature=0.1,
         response_format={"type": "json_object"}
     )
 
@@ -284,12 +298,13 @@ def build_graph(extractions: list[dict], doc_id: str) -> dict:
     }
 
 
-def ingest_document(pdf_path: str, output_path: str = None, max_pages: int = None) -> dict:
+def ingest_document(pdf_path: str, output_path: str = None, start_page: int = 6, max_pages: int = None) -> dict:
     """Main ingestion function.
 
     Args:
         pdf_path: Path to PDF file
         output_path: Where to save the graph JSON (default: data/graph_<docid>.json)
+        start_page: Page to start from (default: 6, to skip front matter)
         max_pages: Maximum pages to process (default: None = all pages)
     """
     if not os.path.exists(pdf_path):
@@ -305,18 +320,18 @@ def ingest_document(pdf_path: str, output_path: str = None, max_pages: int = Non
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
     if max_pages:
-        print(f"Processing {doc_name} (max {max_pages} pages)...")
+        print(f"Processing {doc_name} (pages {start_page} to {start_page + max_pages - 1})...")
     else:
-        print(f"Processing {doc_name} (all pages)...")
+        print(f"Processing {doc_name} (from page {start_page})...")
 
     # Extract text
     print("Extracting text...")
-    pages = extract_text_from_pdf(pdf_path, max_pages)
+    pages = extract_text_from_pdf(pdf_path, start_page, max_pages)
     print(f"  Found {len(pages)} pages with text")
 
     # Extract images (figures, charts, graphs)
     print("Extracting images...")
-    images = extract_images_from_pdf(pdf_path, max_pages)
+    images = extract_images_from_pdf(pdf_path, start_page, max_pages)
     print(f"  Found {len(images)} images")
 
     # Initialize OpenAI client
@@ -398,9 +413,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract entities from PDF into graph JSON")
     parser.add_argument("pdf_path", help="Path to PDF file")
     parser.add_argument("-o", "--output", help="Output JSON path (default: data/graph_<docid>.json)")
+    parser.add_argument("--start-page", type=int, default=6,
+                        help="Page to start from (default: 6, to skip front matter)")
     parser.add_argument("--max-pages", type=int, default=None,
                         help="Max pages to process (default: all)")
 
     args = parser.parse_args()
 
-    ingest_document(args.pdf_path, args.output, args.max_pages)
+    ingest_document(args.pdf_path, args.output, args.start_page, args.max_pages)
