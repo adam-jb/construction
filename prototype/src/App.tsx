@@ -21,17 +21,6 @@ function App() {
   const currentScenario = scenarios.find(s => s.id === state.selectedScenario)!;
   const visibleMessages = currentScenario.steps.slice(0, state.currentStepIndex + 1);
 
-  const handleScenarioChange = (scenarioId: string) => {
-    setState(prev => ({
-      ...prev,
-      selectedScenario: scenarioId,
-      currentStepIndex: 0,
-      activeDocumentId: null,
-      activePage: 1,
-      activeHighlight: null,
-    }));
-  };
-
   const handleNextStep = () => {
     if (state.currentStepIndex < currentScenario.steps.length - 1) {
       setState(prev => ({
@@ -91,11 +80,7 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col bg-slate-50">
-      <Header
-        scenarios={scenarios}
-        selectedScenario={state.selectedScenario}
-        onScenarioChange={handleScenarioChange}
-      />
+      <Header />
       
       <div className="flex-1 flex overflow-hidden">
         {/* Left Pane - Sources */}
