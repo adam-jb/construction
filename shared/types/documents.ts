@@ -25,8 +25,9 @@ export interface DocumentMetadata {
   tags?: string[];
 }
 
-export interface DocumentUploadRequest {
-  file: File;
+// Note: DocumentUploadRequest is handled differently in frontend (File object) 
+// vs backend (multipart form data). This interface is for the response metadata only.
+export interface DocumentUploadMetadata {
   type: DocumentType;
   metadata?: Partial<DocumentMetadata>;
 }

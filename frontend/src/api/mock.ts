@@ -121,8 +121,8 @@ export const mockAPI = {
   },
 
   async uploadDocument(
-    file: File,
-    type: string
+    _file: File,
+    _type: string
   ): Promise<DocumentUploadResponse> {
     await delay(2000); // Simulate upload time
     
@@ -144,7 +144,7 @@ export const mockAPI = {
     return doc;
   },
 
-  async deleteDocument(documentId: string): Promise<void> {
+  async deleteDocument(_documentId: string): Promise<void> {
     await delay(500);
     // Mock deletion
   },
@@ -232,7 +232,7 @@ export const mockAPI = {
     };
   },
 
-  async getReferenceContext(referenceId: string, depth: number = 2) {
+  async getReferenceContext(referenceId: string, _depth: number = 2) {
     await delay(400);
     
     return {
