@@ -1,0 +1,613 @@
+openapi: 3.0.3
+info:
+  title: Construction AI Assistant API
+  description: |
+    API for AI-powered document search and analysis for construction codes and standards.
+    
+    This API provides endpoints for:
+    - Document upload and management
+    - Natural language queries with AI-powered responses
+    - Citation and reference management
+    - Graph-based document relationships
+  version: 0.1.0
+  contact:
+    name: Construction AI Team
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local development
+  - url: https://api.construction-ai.dev/api/v1
+    description: Development environment
+  - url: https://api.construction-ai.com/api/v1
+    description: Production environment
+
+tags:
+  - name: health
+    description: Health check and status endpoints
+  - name: documents
+    description: Document upload and management
+  - name: query
+    description: Natural language search and queries
+  - name: references
+    description: Reference and citation management
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Health check
+      description: Check API health and service status
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+
+  /documents:
+    get:
+      tags: [documents]
+      summary: List documents
+      description: Get all documents for the current user/tenant
+      operationId: listDocuments
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [code, standard, reference, specification]
+      responses:
+        '200':
+          description: List of documents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDocuments'
+
+    post:
+      tags: [documents]
+      summary: Upload document
+      description: Upload a new PDF document for processing
+      operationId: uploadDocument
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - type
+              properties:
+                file:
+                  type: string
+                  format: binary
+                type:
+                  type: string
+                  enum: [code, standard, reference, specification]
+                metadata:
+                  type: object
+                  properties:
+                    author:
+                      type: string
+                    version:
+                      type: string
+                    publishDate:
+                      type: string
+                    tags:
+                      type: array
+                      items:
+                        type: string
+      responses:
+        '202':
+          description: Document accepted for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentUploadResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /documents/{documentId}:
+    get:
+      tags: [documents]
+      summary: Get document details
+      operationId: getDocument
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Document details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '404':
+          description: Document not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags: [documents]
+      summary: Delete document
+      operationId: deleteDocument
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Document deleted
+        '404':
+          description: Document not found
+
+  /documents/{documentId}/pages/{pageNumber}:
+    get:
+      tags: [documents]
+      summary: Get document page
+      description: Get rendered page image and text content
+      operationId: getDocumentPage
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: pageNumber
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Page data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageData'
+        '404':
+          description: Document or page not found
+
+  /query:
+    post:
+      tags: [query]
+      summary: Query documents
+      description: |
+        Submit a natural language query to search across documents.
+        Returns AI-generated answer with citations and references.
+      operationId: queryDocuments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          description: Query results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResponse'
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-sent events stream for real-time results
+        '400':
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /references/{referenceId}:
+    get:
+      tags: [references]
+      summary: Get reference details
+      operationId: getReference
+      parameters:
+        - name: referenceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Reference details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reference'
+        '404':
+          description: Reference not found
+
+  /references/{referenceId}/context:
+    get:
+      tags: [references]
+      summary: Get reference graph context
+      description: Get related references and document connections via Neo4j graph
+      operationId: getReferenceContext
+      parameters:
+        - name: referenceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: depth
+          in: query
+          schema:
+            type: integer
+            default: 2
+            minimum: 1
+            maximum: 5
+      responses:
+        '200':
+          description: Graph context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphContext'
+
+components:
+  schemas:
+    HealthCheckResponse:
+      type: object
+      required:
+        - status
+        - version
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        version:
+          type: string
+        services:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              status:
+                type: string
+                enum: [up, down]
+              responseTime:
+                type: number
+              message:
+                type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    Document:
+      type: object
+      required:
+        - id
+        - name
+        - shortName
+        - type
+        - pages
+        - status
+        - uploadedAt
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        shortName:
+          type: string
+        type:
+          type: string
+          enum: [code, standard, reference, specification]
+        pages:
+          type: integer
+        status:
+          type: string
+          enum: [uploading, processing, ready, error]
+        uploadedAt:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          properties:
+            fileSize:
+              type: integer
+            author:
+              type: string
+            version:
+              type: string
+            publishDate:
+              type: string
+            tags:
+              type: array
+              items:
+                type: string
+
+    DocumentUploadResponse:
+      type: object
+      required:
+        - documentId
+        - status
+      properties:
+        documentId:
+          type: string
+        status:
+          type: string
+          enum: [uploading, processing, ready, error]
+        estimatedProcessingTime:
+          type: integer
+          description: Estimated time in seconds
+
+    PaginatedDocuments:
+      type: object
+      required:
+        - items
+        - total
+        - page
+        - pageSize
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Document'
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        hasMore:
+          type: boolean
+
+    PageData:
+      type: object
+      required:
+        - documentId
+        - pageNumber
+      properties:
+        documentId:
+          type: string
+        pageNumber:
+          type: integer
+        imageUrl:
+          type: string
+          format: uri
+        textContent:
+          type: string
+        annotations:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              type:
+                type: string
+                enum: [highlight, note, reference]
+              position:
+                type: object
+                properties:
+                  top:
+                    type: number
+                  left:
+                    type: number
+                  width:
+                    type: number
+                  height:
+                    type: number
+              content:
+                type: string
+
+    QueryRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          minLength: 1
+        documentIds:
+          type: array
+          items:
+            type: string
+        filters:
+          type: object
+          properties:
+            documentTypes:
+              type: array
+              items:
+                type: string
+            sections:
+              type: array
+              items:
+                type: string
+        options:
+          type: object
+          properties:
+            maxResults:
+              type: integer
+              default: 10
+            includeReasoning:
+              type: boolean
+              default: true
+            includeGraphContext:
+              type: boolean
+              default: false
+            stream:
+              type: boolean
+              default: false
+
+    QueryResponse:
+      type: object
+      required:
+        - queryId
+        - answer
+        - references
+      properties:
+        queryId:
+          type: string
+        answer:
+          type: string
+        references:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reference'
+        reasoning:
+          type: array
+          items:
+            type: object
+            properties:
+              step:
+                type: integer
+              description:
+                type: string
+              action:
+                type: string
+                enum: [search, graph_traverse, synthesize, verify]
+              details:
+                type: object
+        graphContext:
+          $ref: '#/components/schemas/GraphContext'
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        processingTime:
+          type: integer
+          description: Processing time in milliseconds
+
+    Reference:
+      type: object
+      required:
+        - id
+        - documentId
+        - documentName
+        - page
+        - label
+        - excerpt
+      properties:
+        id:
+          type: string
+        documentId:
+          type: string
+        documentName:
+          type: string
+        page:
+          type: integer
+        section:
+          type: string
+        label:
+          type: string
+        excerpt:
+          type: string
+        highlightText:
+          type: array
+          items:
+            type: string
+        highlightArea:
+          type: object
+          properties:
+            top:
+              type: number
+            left:
+              type: number
+            width:
+              type: number
+            height:
+              type: number
+        confidence:
+          type: number
+        context:
+          type: string
+
+    GraphContext:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              type:
+                type: string
+                enum: [document, section, clause, table, figure]
+              label:
+                type: string
+              documentId:
+                type: string
+              page:
+                type: integer
+              properties:
+                type: object
+        edges:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              source:
+                type: string
+              target:
+                type: string
+              type:
+                type: string
+                enum: [references, contains, cites, supersedes, related]
+              label:
+                type: string
+        focusNodeId:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+        timestamp:
+          type: string
+          format: date-time
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - bearerAuth: []

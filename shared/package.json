@@ -1,0 +1,17 @@
+{
+  "name": "@construction-ai/shared",
+  "version": "0.1.0",
+  "description": "Shared types and utilities for Construction AI Assistant",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "keywords": ["construction", "types", "shared"],
+  "author": "",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "typescript": "~5.6.2"
+  }
+}

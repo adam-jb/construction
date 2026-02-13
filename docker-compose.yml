@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  # Neo4j Graph Database
+  neo4j:
+    image: neo4j:5.15
+    container_name: construction-neo4j
+    ports:
+      - "7474:7474"  # HTTP Browser UI
+      - "7687:7687"  # Bolt protocol
+    environment:
+      - NEO4J_AUTH=neo4j/testpassword
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    networks:
+      - construction-network
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p testpassword 'RETURN 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL (Optional - for user/session data)
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: construction-postgres
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     - POSTGRES_USER=construction
+  #     - POSTGRES_PASSWORD=dev_password
+  #     - POSTGRES_DB=construction
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   networks:
+  #     - construction-network
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  # postgres_data:
+
+networks:
+  construction-network:
+    driver: bridge
