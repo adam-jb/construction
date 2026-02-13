@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { scenarios, documents } from './data/mockData';
 import { Reference, AppState } from './types';
 import SourcesPane from './components/SourcesPane';
 import ChatPane from './components/ChatPane';
 import DocumentViewer from './components/DocumentViewer';
 import Header from './components/Header';
+import apiClient from './api/client';
 
 function App() {
   const [state, setState] = useState<AppState>({
@@ -20,6 +21,11 @@ function App() {
 
   const currentScenario = scenarios.find(s => s.id === state.selectedScenario)!;
   const visibleMessages = currentScenario.steps.slice(0, state.currentStepIndex + 1);
+
+  // Test API client on mount
+  useEffect(() => {
+    apiClient.healthCheck();
+  }, []);
 
   const handleNextStep = () => {
     if (state.currentStepIndex < currentScenario.steps.length - 1) {
