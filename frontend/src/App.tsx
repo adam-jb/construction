@@ -24,7 +24,11 @@ function App() {
 
   // Test API client on mount
   useEffect(() => {
-    apiClient.healthCheck();
+    apiClient.healthCheck().then(res => {
+      console.log('✅ API Health Check:', res);
+    }).catch(err => {
+      console.error('❌ API Health Check Failed:', err);
+    });
   }, []);
 
   const handleNextStep = () => {
