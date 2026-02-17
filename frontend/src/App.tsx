@@ -1,26 +1,16 @@
 import { useState, useEffect } from 'react';
-import { scenarios, documents } from './data/mockData';
-import { Reference, AppState } from './types';
-import SourcesPane from './components/SourcesPane';
-import ChatPane from './components/ChatPane';
-import DocumentViewer from './components/DocumentViewer';
 import Header from './components/Header';
+import DocumentsPanel from './components/DocumentsPanel';
+import ChatPane from './components/ChatPane';
+import ViewerPanel from './components/ViewerPanel';
 import apiClient from './api/client';
+import type { Document } from './api/types';
 
 function App() {
-  const [state, setState] = useState<AppState>({
-    selectedScenario: scenarios[0].id,
-    currentStepIndex: 0,
-    activeDocumentId: null,
-    activePage: 1,
-    activeHighlight: null,
-    enabledDocuments: new Set(documents.map(d => d.id)),
-    leftPaneCollapsed: false,
-    rightPaneCollapsed: false,
-  });
-
-  const currentScenario = scenarios.find(s => s.id === state.selectedScenario)!;
-  const visibleMessages = currentScenario.steps.slice(0, state.currentStepIndex + 1);
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+  const [activeDocument, setActiveDocument] = useState<Document | null>(null);
+  const [enabledDocuments, setEnabledDocuments] = useState<Set<string>>(new Set());
 
   // Test API client on mount
   useEffect(() => {
@@ -31,61 +21,21 @@ function App() {
     });
   }, []);
 
-  const handleNextStep = () => {
-    if (state.currentStepIndex < currentScenario.steps.length - 1) {
-      setState(prev => ({
-        ...prev,
-        currentStepIndex: prev.currentStepIndex + 1,
-      }));
-    }
+  const handleDocumentSelect = (document: Document) => {
+    setActiveDocument(document);
+    setRightPanelCollapsed(false);
   };
 
-  const handlePrevStep = () => {
-    if (state.currentStepIndex > 0) {
-      setState(prev => ({
-        ...prev,
-        currentStepIndex: prev.currentStepIndex - 1,
-        activeHighlight: null,
-      }));
-    }
-  };
-
-  const handleReferenceClick = (ref: Reference) => {
-    setState(prev => ({
-      ...prev,
-      activeDocumentId: ref.docId,
-      activePage: ref.page,
-      activeHighlight: ref,
-      rightPaneCollapsed: false,
-    }));
-  };
-
-  const handleDocumentToggle = (docId: string) => {
-    setState(prev => {
-      const newEnabled = new Set(prev.enabledDocuments);
-      if (newEnabled.has(docId)) {
-        newEnabled.delete(docId);
+  const handleDocumentToggle = (documentId: string) => {
+    setEnabledDocuments(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(documentId)) {
+        newSet.delete(documentId);
       } else {
-        newEnabled.add(docId);
+        newSet.add(documentId);
       }
-      return { ...prev, enabledDocuments: newEnabled };
+      return newSet;
     });
-  };
-
-  const handlePageChange = (page: number) => {
-    setState(prev => ({
-      ...prev,
-      activePage: page,
-      activeHighlight: null,
-    }));
-  };
-
-  const toggleLeftPane = () => {
-    setState(prev => ({ ...prev, leftPaneCollapsed: !prev.leftPaneCollapsed }));
-  };
-
-  const toggleRightPane = () => {
-    setState(prev => ({ ...prev, rightPaneCollapsed: !prev.rightPaneCollapsed }));
   };
 
   return (
@@ -93,37 +43,26 @@ function App() {
       <Header />
       
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Pane - Sources */}
-        <SourcesPane
-          documents={documents}
-          enabledDocuments={state.enabledDocuments}
+        {/* Left Panel - Documents */}
+        <DocumentsPanel
+          collapsed={leftPanelCollapsed}
+          onToggleCollapse={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
+          onDocumentSelect={handleDocumentSelect}
+          enabledDocuments={enabledDocuments}
           onDocumentToggle={handleDocumentToggle}
-          collapsed={state.leftPaneCollapsed}
-          onToggleCollapse={toggleLeftPane}
-          scenarioDocuments={currentScenario.documents}
         />
 
-        {/* Center Pane - Chat */}
+        {/* Center Panel - Chat */}
         <ChatPane
-          messages={visibleMessages}
-          onReferenceClick={handleReferenceClick}
-          activeHighlight={state.activeHighlight}
-          enabledDocuments={state.enabledDocuments}
-          currentStep={state.currentStepIndex}
-          totalSteps={currentScenario.steps.length}
-          onNextStep={handleNextStep}
-          onPrevStep={handlePrevStep}
+          collapsed={rightPanelCollapsed}
+          onToggleCollapse={() => setRightPanelCollapsed(!rightPanelCollapsed)}
         />
 
-        {/* Right Pane - Document Viewer */}
-        <DocumentViewer
-          documents={documents}
-          activeDocumentId={state.activeDocumentId}
-          activePage={state.activePage}
-          activeHighlight={state.activeHighlight}
-          collapsed={state.rightPaneCollapsed}
-          onToggleCollapse={toggleRightPane}
-          onPageChange={handlePageChange}
+        {/* Right Panel - Viewer */}
+        <ViewerPanel
+          collapsed={rightPanelCollapsed}
+          onToggleCollapse={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+          activeDocument={activeDocument}
         />
       </div>
     </div>
