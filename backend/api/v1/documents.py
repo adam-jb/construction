@@ -1,137 +1,143 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
-from typing import List, Optional
+import logging
+import re
+import uuid
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, UploadFile, File, status
 from pydantic import BaseModel
 
+from core.config import settings
+from services.document_processor import DocumentProcessor
+
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# Response Models (TODO: Import from shared types or create Pydantic models)
-class DocumentUploadResponse(BaseModel):
-    documentId: str
-    status: str
-    estimatedProcessingTime: Optional[int] = None
-
-
-class Document(BaseModel):
+class DocumentResponse(BaseModel):
     id: str
+    code: str
     name: str
-    shortName: str
-    type: str
     pages: int
     status: str
-    uploadedAt: str
 
 
-class PaginatedDocuments(BaseModel):
-    items: List[Document]
-    total: int
-    page: int
-    pageSize: int
-    hasMore: bool
+class UploadResponse(BaseModel):
+    documentId: str
+    status: str
 
 
 @router.get("/documents")
-async def list_documents(
-    page: int = 1,
-    pageSize: int = 20,
-    type: Optional[str] = None
-) -> PaginatedDocuments:
-    """
-    List all documents for the current user/tenant
-    
-    TODO: Implement:
-    - Database query for documents
-    - Pagination
-    - Filtering by type
-    - Sort by uploadedAt
-    """
-    # Mock response
-    return PaginatedDocuments(
-        items=[],
-        total=0,
-        page=page,
-        pageSize=pageSize,
-        hasMore=False
+async def list_documents(request: Request) -> list[DocumentResponse]:
+    """List all ingested documents."""
+    store = request.app.state.store
+    docs = []
+    for doc_id, doc in store.documents.items():
+        docs.append(DocumentResponse(
+            id=doc_id,
+            code=doc.get("code", doc_id),
+            name=doc.get("name", ""),
+            pages=doc.get("pages", 0),
+            status=doc.get("status", "unknown"),
+        ))
+    return docs
+
+
+@router.get("/documents/{doc_id}")
+async def get_document(request: Request, doc_id: str) -> DocumentResponse:
+    """Get document details."""
+    store = request.app.state.store
+    doc = store.documents.get(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return DocumentResponse(
+        id=doc_id,
+        code=doc.get("code", doc_id),
+        name=doc.get("name", ""),
+        pages=doc.get("pages", 0),
+        status=doc.get("status", "unknown"),
     )
 
 
 @router.post("/documents", status_code=status.HTTP_202_ACCEPTED)
 async def upload_document(
+    request: Request,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    type: str = Form(...)
-) -> DocumentUploadResponse:
-    """
-    Upload a new PDF document for processing
-    
-    TODO: Implement:
-    1. Validate file (PDF, size limit)
-    2. Generate document ID
-    3. Upload to Cloud Storage
-    4. Trigger Pub/Sub for background processing
-    5. Return upload response
-    
-    Processing pipeline (background job):
-    - Extract text with PyMuPDF
-    - Chunk text
-    - Generate embeddings
-    - Store in vector DB
-    - Create Neo4j graph nodes/edges
-    - Update document status to 'ready'
-    """
-    if not file.filename.endswith('.pdf'):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are supported"
-        )
-    
-    # TODO: Implement upload logic
-    
-    return DocumentUploadResponse(
-        documentId="mock-doc-123",
-        status="processing",
-        estimatedProcessingTime=180
-    )
+):
+    """Upload a PDF for ingestion (processed in background)."""
+    if not file.filename or not file.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    pdf_bytes = await file.read()
+    if len(pdf_bytes) > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+        raise HTTPException(status_code=400, detail=f"File exceeds {settings.MAX_UPLOAD_SIZE_MB}MB limit")
+
+    # Generate doc_id from filename
+    doc_id = re.sub(r"[.\s]+", "_", file.filename.replace(".pdf", ""))
+
+    store = request.app.state.store
+    gemini = request.app.state.gemini
+    pc = request.app.state.pinecone
+
+    processor = DocumentProcessor(gemini, pc, store)
+    background_tasks.add_task(processor.process_pdf, pdf_bytes, doc_id, file.filename)
+
+    return UploadResponse(documentId=doc_id, status="processing")
 
 
-@router.get("/documents/{documentId}")
-async def get_document(documentId: str) -> Document:
-    """
-    Get document details by ID
-    
-    TODO: Implement database query
-    """
-    # Mock response
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Document not found"
-    )
+@router.delete("/documents/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document(request: Request, doc_id: str):
+    """Delete a document and its data."""
+    store = request.app.state.store
+    pc = request.app.state.pinecone
+
+    if doc_id not in store.documents:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    doc = store.documents[doc_id]
+    prefix = doc.get("key_prefix", "")
+
+    # Remove from Pinecone
+    try:
+        pc.delete_by_doc(doc_id)
+    except Exception as e:
+        logger.warning(f"Pinecone delete failed: {e}")
+
+    # Remove from data stores
+    for key in list(store.sections.keys()):
+        if key.startswith(prefix):
+            del store.sections[key]
+    for key in list(store.references.keys()):
+        if key.startswith(prefix):
+            del store.references[key]
+    for key in list(store.objects.keys()):
+        if key.startswith(prefix):
+            del store.objects[key]
+    for key in list(store.precedence.keys()):
+        if key.startswith(prefix):
+            del store.precedence[key]
+    del store.documents[doc_id]
+
+    store.save_all()
 
 
-@router.delete("/documents/{documentId}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_document(documentId: str):
-    """
-    Delete a document
-    
-    TODO: Implement:
-    - Delete from Cloud Storage
-    - Delete from vector DB
-    - Delete from Neo4j
-    - Delete metadata from database
-    """
-    pass
+@router.get("/documents/{doc_id}/sections")
+async def list_sections(request: Request, doc_id: str) -> list[dict]:
+    """List all sections for a document."""
+    store = request.app.state.store
+    doc = store.documents.get(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
 
-
-@router.get("/documents/{documentId}/pages/{pageNumber}")
-async def get_document_page(documentId: str, pageNumber: int):
-    """
-    Get rendered page image and text content
-    
-    TODO: Implement:
-    - Fetch page image URL from Cloud Storage
-    - Optionally extract text content
-    - Return annotations if any
-    """
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Document or page not found"
-    )
+    prefix = doc.get("key_prefix", "")
+    sections = []
+    for key, sec in store.sections.items():
+        if key.startswith(prefix):
+            sections.append({
+                "id": key,
+                "section_code": sec.get("section_code", ""),
+                "title": sec.get("title", ""),
+                "page": sec.get("page", 0),
+                "content_length": len(sec.get("content", "")),
+            })
+    sections.sort(key=lambda s: s["page"])
+    return sections
