@@ -4,6 +4,1102 @@
   "graph": {
     "document": "en_1991_1_3_2003_snow_loads"
   },
-  "nodes": [],
-  "links": []
+  "nodes": [
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_2",
+      "type": "Clause",
+      "name": "Section 2 Classification of actions",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_4_1_1_1P",
+      "type": "Clause",
+      "name": "EN 1990:2002 4.1.1 (1)P",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_4_1_1_4",
+      "type": "Clause",
+      "name": "EN 1990:2002 4.1.1 (4)",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_4_1_1_2",
+      "type": "Clause",
+      "name": "EN 1990:2002 4.1.1 (2)",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_1_6_3",
+      "type": "Clause",
+      "name": "1.6.3",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_1_6_10",
+      "type": "Clause",
+      "name": "1.6.10",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_5_2",
+      "type": "Clause",
+      "name": "5.2",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_en_1990_2002",
+      "type": "Clause",
+      "name": "EN 1990:2002",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_snow_loads",
+      "type": "Concept",
+      "name": "snow loads",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_variable_actions",
+      "type": "Concept",
+      "name": "variable actions",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_fixed_actions",
+      "type": "Concept",
+      "name": "fixed actions",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_static_actions",
+      "type": "Concept",
+      "name": "static actions",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_accidental_actions",
+      "type": "Concept",
+      "name": "accidental actions",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_exceptional_snow_loads",
+      "type": "Concept",
+      "name": "exceptional snow loads",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_exceptional_snow_drifts",
+      "type": "Concept",
+      "name": "exceptional snow drifts",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_geographical_locations",
+      "type": "Concept",
+      "name": "geographical locations",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_national_annexe",
+      "type": "Concept",
+      "name": "National Annex",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_en_1991_edition_2003",
+      "type": "Parameter",
+      "name": "EN 1991-1-3 edition year",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "value": "2003",
+      "context": "Document edition year for EN 1991-1-3:2003"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_en_1990_year",
+      "type": "Parameter",
+      "name": "EN 1990 edition year",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "value": "2002",
+      "context": "EN 1990:2002 edition year"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_3_1",
+      "type": "Clause",
+      "name": "3.1 General",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_3_2",
+      "type": "Clause",
+      "name": "3.2 Normal conditions",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_3_3",
+      "type": "Clause",
+      "name": "3.3 Exceptional conditions",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_3_3_a",
+      "type": "Clause",
+      "name": "3.3.a",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_3_3_b",
+      "type": "Clause",
+      "name": "3.3.b",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_5_2_3P_a",
+      "type": "Clause",
+      "name": "5.2(3)P a)",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_5_2_3P_b",
+      "type": "Clause",
+      "name": "5.2(3)P (b)",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_4_3",
+      "type": "Clause",
+      "name": "4.3",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_5_3",
+      "type": "Clause",
+      "name": "5.3",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_annex_A_case_A",
+      "type": "Clause",
+      "name": "Annex A case A",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_annex_A_case_B2",
+      "type": "Clause",
+      "name": "Annex A case B2",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_annex_B",
+      "type": "Clause",
+      "name": "Annex B",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_6",
+      "type": "Clause",
+      "name": "Section 6",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_annex_A_case_81",
+      "type": "Clause",
+      "name": "Annex A case 81",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_3_design_situations",
+      "type": "Clause",
+      "name": "Section 3 Design situations",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_year_2003",
+      "type": "Parameter",
+      "name": "publication year",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "Year",
+      "value": "2003",
+      "context": "document edition year (BS EN 1991-1-3:2003)"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_clause_annex_A_case_A_note",
+      "type": "Clause",
+      "name": "Note Annex A case A",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_annex_A_case_81",
+      "type": "Parameter",
+      "name": "Annex A case 81",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "value": "81",
+      "context": "NOTE 1 Annex A case 81"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_fig_p15_1",
+      "type": "Figure",
+      "name": "Figure p15_1: Section 2 Classification of actions",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "description": "Figure/container for Section 2 text on classification of snow loads as actions, including bullets (1)P, (2), (3), (4) and NOTE about National Annex."
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_sec2",
+      "type": "Parameter",
+      "name": "section_number",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "sec",
+      "value": "2",
+      "context": "Section 2"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_bullet1_text",
+      "type": "Parameter",
+      "name": "bullet_text_1",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "(1)P",
+      "value": "Snow loads shall be classified as variable, fixed actions (see also 5.2), unless otherwise specified in this standard, see EN 1990:2002, 4.1.1 (1)P and 4.1.1 (4).",
+      "context": "Section 2, first bullet"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_crossref_5_2",
+      "type": "Parameter",
+      "name": "cross_reference_to_5_2",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "see also 5.2",
+      "value": "5.2",
+      "context": "cross-reference in bullet 1"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_bullet2_text",
+      "type": "Parameter",
+      "name": "bullet_text_2",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "(2)",
+      "value": "Snow loads covered in this standard should be classified as static actions, see EN 1990:2002, 4.1.1 (4).",
+      "context": "Section 2, second bullet"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_bullet3_text",
+      "type": "Parameter",
+      "name": "bullet_text_3",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "(3)",
+      "value": "In accordance with EN 1990:2002, 4.1.1 (2), for the particular condition defined in 1.6.3, exceptional snow loads may be treated as accidental actions depending on geographical locations.",
+      "context": "Section 2, third bullet"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_note_1",
+      "type": "Parameter",
+      "name": "note_A",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "NOTE",
+      "value": "The National Annex may give the conditions of use (which may include geographical locations) of this clause.",
+      "context": "Note after bullet 3"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_bullet4_text",
+      "type": "Parameter",
+      "name": "bullet_text_4",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "(4)",
+      "value": "In accordance with EN 1990:2002, 4.1.1 (2), for the particular condition defined in 1.6.10, loads due to exceptional snow drifts may be treated as accidental actions, depending on geographical locations.",
+      "context": "Section 2, fourth bullet"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_note_2",
+      "type": "Parameter",
+      "name": "note_B",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "NOTE",
+      "value": "The National Annex may give the conditions of use (which may include geographical locations) of this clause.",
+      "context": "Note after bullet 4"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_page_footer",
+      "type": "Parameter",
+      "name": "page_number",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "page",
+      "value": "13",
+      "context": "page footer"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_1",
+      "type": "Concept",
+      "name": "Snow loads",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "description": "Snow loads classified as variable or fixed actions within the standard."
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_2",
+      "type": "Concept",
+      "name": "Variable actions",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "description": "Classification category for snow loads that are variable."
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_3",
+      "type": "Concept",
+      "name": "Fixed actions",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "description": "Classification category for snow loads that are fixed."
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_4",
+      "type": "Concept",
+      "name": "Static actions",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "description": "Snow loads covered in this standard should be classified as static actions."
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_5",
+      "type": "Concept",
+      "name": "Accidental actions",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "description": "Exceptional snow loads may be treated as accidental actions depending on geographical locations."
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_6",
+      "type": "Concept",
+      "name": "Exceptional snow drifts",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "description": "Loads due to exceptional snow drifts may be treated as accidental actions, depending on geographical locations."
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_7",
+      "type": "Concept",
+      "name": "Geographical locations",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "description": "Geographical locations influence the treatment of accidental actions and snow drift loads."
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_8",
+      "type": "Concept",
+      "name": "National Annex",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "description": "National Annex may define conditions of use (including geographical locations) of this clause."
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_concept_9",
+      "type": "Concept",
+      "name": "Note (annotation)",
+      "page": 15,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "description": "NOTE indicates possible variations by National Annex regarding conditions of use."
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "type": "Figure",
+      "name": "Figure p16_1: Page 16 content",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "description": "Container for the text on Page 16 covering Section 3 Design situations (3.1 General, 3.2 Normal conditions, 3.3 Exceptional conditions) and associated notes/references."
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_doc_code",
+      "type": "Parameter",
+      "name": "document code",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "BS EN 1991-1-3:2003",
+      "value": "BS EN 1991-1-3:2003",
+      "context": "document header"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_doc_version",
+      "type": "Parameter",
+      "name": "document version",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "EN 1991-1-3:2003 (E)",
+      "value": "EN 1991-1-3:2003 (E)",
+      "context": "document header secondary line"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_section3",
+      "type": "Parameter",
+      "name": "section number",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "3",
+      "value": "3",
+      "context": "Section header"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_3_1",
+      "type": "Parameter",
+      "name": "section 3.1",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "3.1",
+      "value": "3.1",
+      "context": "General"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_3_2",
+      "type": "Parameter",
+      "name": "section 3.2",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "3.2",
+      "value": "3.2",
+      "context": "Normal conditions"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_3_3",
+      "type": "Parameter",
+      "name": "section 3.3",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "3.3",
+      "value": "3.3",
+      "context": "Exceptional conditions"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_note1",
+      "type": "Parameter",
+      "name": "NOTE 1",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "NOTE 1",
+      "value": "NOTE 1: See Annex A case A.",
+      "context": "notes"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_note2",
+      "type": "Parameter",
+      "name": "NOTE 2",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "NOTE 2",
+      "value": "NOTE 2: The National Annex may define which design situation applies for a particular local effect described in Section 6.",
+      "context": "notes"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_2_3",
+      "type": "Parameter",
+      "name": "reference 2(3)",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "2(3)",
+      "value": "2(3)",
+      "context": "locations with exceptional snow falls reference"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_2_4",
+      "type": "Parameter",
+      "name": "reference 2(4)",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "2(4)",
+      "value": "2(4)",
+      "context": "locations with exceptional snow drifts reference"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_5_2_3_pa",
+      "type": "Parameter",
+      "name": "5.2(3)P a",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "5.2(3)P a",
+      "value": "5.2(3)P a",
+      "context": "undrifted/drifted snow load arrangements (a)"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_5_2_3_pb",
+      "type": "Parameter",
+      "name": "5.2(3)P b",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "5.2(3)P b",
+      "value": "5.2(3)P b",
+      "context": "exceptional conditions subcase (b)"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_5_2_3_pc",
+      "type": "Parameter",
+      "name": "5.2(3)P c",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "5.2(3)P c",
+      "value": "5.2(3)P c",
+      "context": "accidental design situation (c)"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_5_3",
+      "type": "Parameter",
+      "name": "5.3",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "5.3",
+      "value": "5.3",
+      "context": "design situations reference"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_4_3",
+      "type": "Parameter",
+      "name": "4.3",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "4.3",
+      "value": "4.3",
+      "context": "reference to 4.3"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_annexA_caseA",
+      "type": "Parameter",
+      "name": "Annex A - Case A",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "Annex A Case A",
+      "value": "Annex A case A",
+      "context": " Annex A case A reference"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_annexA_caseB1",
+      "type": "Parameter",
+      "name": "Annex A - Case B1",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "Annex A Case B1",
+      "value": "Annex A case B1",
+      "context": "Annex A case B1 reference"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_annexA_caseB2",
+      "type": "Parameter",
+      "name": "Annex A - Case B2",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "Annex A Case B2",
+      "value": "Annex A case B2",
+      "context": "Annex A case B2 reference"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_annexA",
+      "type": "Parameter",
+      "name": "Annex A",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "Annex A",
+      "value": "Annex A",
+      "context": "Annex A reference"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_EN_1990_2002",
+      "type": "Parameter",
+      "name": "EN 1990:2002",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "EN 1990:2002",
+      "value": "EN 1990:2002",
+      "context": "referenced standard"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_EN_1990_2002_3_5",
+      "type": "Parameter",
+      "name": "EN 1990:2002, 3.5",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "EN 1990:2002, 3.5",
+      "value": "3.5",
+      "context": "EN 1990:2002 reference and clause 3.5"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_page14",
+      "type": "Parameter",
+      "name": "page footer number",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "14",
+      "value": "14",
+      "context": "page footer (bottom of page)"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_section6",
+      "type": "Parameter",
+      "name": "Section 6 reference",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "Section 6",
+      "value": "Section 6",
+      "context": "local effects referenced in notes"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_note_A_caseA",
+      "type": "Parameter",
+      "name": "Annex A case A note",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "Annex A case A",
+      "value": "Annex A case A",
+      "context": "Note referencing Annex A case A"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_note_A_caseB1",
+      "type": "Parameter",
+      "name": "Annex A case B1 note",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "Annex A case B1",
+      "value": "Annex A case B1",
+      "context": "Note referencing Annex A case B1"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_note_A_caseB2",
+      "type": "Parameter",
+      "name": "Annex A case B2 note",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "Annex A case B2",
+      "value": "Annex A case B2",
+      "context": "Note referencing Annex A case B2"
+    },
+    {
+      "id": "en_1991_1_3_2003_snow_loads_param_Section_6_ref",
+      "type": "Parameter",
+      "name": "Section 6 reference note",
+      "page": 16,
+      "document": "en_1991_1_3_2003_snow_loads",
+      "symbol": "Section 6",
+      "value": "Section 6",
+      "context": "Section 6 referenced in notes"
+    }
+  ],
+  "links": [
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_2",
+      "target": "en_1991_1_3_2003_snow_loads_clause_5_2",
+      "type": "REFERENCES",
+      "evidence": "see also 5.2"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_2",
+      "target": "en_1991_1_3_2003_snow_loads_clause_en_1990_2002",
+      "type": "REFERENCES",
+      "evidence": "EN 1990:2002, 4.1.1 (1)P and 4.1.1 (4)"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_2",
+      "target": "en_1991_1_3_2003_snow_loads_clause_4_1_1_2",
+      "type": "REFERENCES",
+      "evidence": "EN 1990:2002, 4.1.1 (2)"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_2",
+      "target": "en_1991_1_3_2003_snow_loads_clause_1_6_3",
+      "type": "REFERENCES",
+      "evidence": "1.6.3"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_2",
+      "target": "en_1991_1_3_2003_snow_loads_clause_1_6_10",
+      "type": "REFERENCES",
+      "evidence": "1.6.10"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_2",
+      "target": "en_1991_1_3_2003_snow_loads_concept_exceptional_snow_loads",
+      "type": "USES",
+      "evidence": "exceptional snow loads may be treated as accidental actions depending on geographical locations"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_concept_snow_loads",
+      "target": "en_1991_1_3_2003_snow_loads_clause_2",
+      "type": "DEFINED_IN",
+      "evidence": ""
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_concept_variable_actions",
+      "target": "en_1991_1_3_2003_snow_loads_clause_2",
+      "type": "DEFINED_IN",
+      "evidence": ""
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_concept_fixed_actions",
+      "target": "en_1991_1_3_2003_snow_loads_clause_2",
+      "type": "DEFINED_IN",
+      "evidence": ""
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_concept_static_actions",
+      "target": "en_1991_1_3_2003_snow_loads_clause_2",
+      "type": "DEFINED_IN",
+      "evidence": ""
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_concept_accidental_actions",
+      "target": "en_1991_1_3_2003_snow_loads_clause_2",
+      "type": "DEFINED_IN",
+      "evidence": ""
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_3_1",
+      "target": "en_1991_1_3_2003_snow_loads_clause_6",
+      "type": "REFERENCES",
+      "evidence": "3.1: for local effects described in Section 6"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_3_2",
+      "target": "en_1991_1_3_2003_snow_loads_clause_5_2_3P_a",
+      "type": "REFERENCES",
+      "evidence": "3.2: 5.2(3)P a) and 5.3"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_3_2",
+      "target": "en_1991_1_3_2003_snow_loads_clause_5_3",
+      "type": "REFERENCES",
+      "evidence": "3.2: 5.3"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_3_3",
+      "target": "en_1991_1_3_2003_snow_loads_clause_5_2_3P_a",
+      "type": "REFERENCES",
+      "evidence": "3.3(1): 5.2(3)P a) and 5.3"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_3_3",
+      "target": "en_1991_1_3_2003_snow_loads_clause_4_3",
+      "type": "REFERENCES",
+      "evidence": "3.3(1): 4.3"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_3_3",
+      "target": "en_1991_1_3_2003_snow_loads_clause_5_2_3P_b",
+      "type": "REFERENCES",
+      "evidence": "3.3(1): 5.2(3)P (b) and 5.3"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_3_3",
+      "target": "en_1991_1_3_2003_snow_loads_clause_5_3",
+      "type": "REFERENCES",
+      "evidence": "3.3(1): 5.3"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_3_3",
+      "target": "en_1991_1_3_2003_snow_loads_clause_annex_A_case_A",
+      "type": "REFERENCES",
+      "evidence": "NOTE 1: Annex A case A"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_3_3",
+      "target": "en_1991_1_3_2003_snow_loads_clause_annex_B",
+      "type": "REFERENCES",
+      "evidence": "NOTE 2: Annex B"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_3_2",
+      "target": "en_1991_1_3_2003_snow_loads_clause_annex_A_case_A",
+      "type": "REFERENCES",
+      "evidence": "NOTE: See Annex A case A"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_3_3",
+      "target": "en_1991_1_3_2003_snow_loads_clause_6",
+      "type": "REFERENCES",
+      "evidence": "NOTE: The National Annex may define which design situation applies for a particular local effect described in Section 6"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_clause_annex_A_case_81",
+      "target": "en_1991_1_3_2003_snow_loads_param_annex_A_case_81",
+      "type": "CONTAINS",
+      "evidence": "Annex A case 81 numeric value"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p15_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_sec2",
+      "type": "CONTAINS",
+      "evidence": "Page text begins with '2. Section 2 Classification of actions'."
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p15_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_bullet1_text",
+      "type": "CONTAINS",
+      "evidence": "First bullet text starting with '(1)P Snow loads shall be classified as variable, fixed actions'."
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p15_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_crossref_5_2",
+      "type": "CONTAINS",
+      "evidence": "Cross-reference to 5.2 in bullet 1."
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p15_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_bullet2_text",
+      "type": "CONTAINS",
+      "evidence": "Second bullet text starting with '(2) Snow loads covered in this standard should be classified as static actions'."
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p15_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_bullet3_text",
+      "type": "CONTAINS",
+      "evidence": "Third bullet text starting with '(3) In accordance with EN 1990:2002, 4.1.1 (2), for the particular condition defined in 1.6.3,...'"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p15_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_bullet4_text",
+      "type": "CONTAINS",
+      "evidence": "Fourth bullet text starting with '(4) In accordance with EN 1990:2002, 4.1.1 (2), for the particular condition defined in 1.6.10,...'"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p15_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_note_1",
+      "type": "CONTAINS",
+      "evidence": "NOTE: The National Annex may give the conditions of use..."
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p15_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_note_2",
+      "type": "CONTAINS",
+      "evidence": "NOTE: The National Annex may give the conditions of use (which may include geographical locations) of this clause."
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p15_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_page_footer",
+      "type": "CONTAINS",
+      "evidence": "Footer shows page '13' in bottom-right."
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p15_1",
+      "target": "en_1991_1_3_2003_snow_loads_concept_1",
+      "type": "CONTAINS",
+      "evidence": "Overall topic is snow loads classification."
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p15_1",
+      "target": "en_1991_1_3_2003_snow_loads_concept_4",
+      "type": "CONTAINS",
+      "evidence": "Bullet 2 mentions static actions."
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p15_1",
+      "target": "en_1991_1_3_2003_snow_loads_concept_5",
+      "type": "CONTAINS",
+      "evidence": "Bullet 3 mentions accidental actions."
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p15_1",
+      "target": "en_1991_1_3_2003_snow_loads_concept_6",
+      "type": "CONTAINS",
+      "evidence": "Bullet 4 mentions exceptional snow drifts."
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p15_1",
+      "target": "en_1991_1_3_2003_snow_loads_concept_7",
+      "type": "CONTAINS",
+      "evidence": "Geographical locations mentioned in relation to accidental actions and drifts."
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p15_1",
+      "target": "en_1991_1_3_2003_snow_loads_concept_8",
+      "type": "CONTAINS",
+      "evidence": "NOTE references National Annex."
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p15_1",
+      "target": "en_1991_1_3_2003_snow_loads_concept_9",
+      "type": "CONTAINS",
+      "evidence": "NOTE annotation in the text."
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_doc_code",
+      "type": "CONTAINS",
+      "evidence": "document header content present on page 16"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_doc_version",
+      "type": "CONTAINS",
+      "evidence": "document header version line present on page 16"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_section3",
+      "type": "CONTAINS",
+      "evidence": "Section 3 label visible on page 16"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_3_1",
+      "type": "CONTAINS",
+      "evidence": "3.1 General appears on page 16"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_3_2",
+      "type": "CONTAINS",
+      "evidence": "3.2 Normal conditions appears on page 16"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_3_3",
+      "type": "CONTAINS",
+      "evidence": "3.3 Exceptional conditions appears on page 16"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_note1",
+      "type": "CONTAINS",
+      "evidence": "NOTE 1 text present on page 16"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_note2",
+      "type": "CONTAINS",
+      "evidence": "NOTE 2 text present on page 16"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_2_3",
+      "type": "CONTAINS",
+      "evidence": "2(3) reference appears in normal conditions content"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_2_4",
+      "type": "CONTAINS",
+      "evidence": "2(4) reference appears in normal conditions content"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_5_2_3_pa",
+      "type": "CONTAINS",
+      "evidence": "5.2(3)P a appears in section 3 content"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_5_2_3_pb",
+      "type": "CONTAINS",
+      "evidence": "5.2(3)P b appears in section 3 content"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_5_2_3_pc",
+      "type": "CONTAINS",
+      "evidence": "5.2(3)P c appears in section 3 content"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_5_3",
+      "type": "CONTAINS",
+      "evidence": "5.3 appears in section 3 content"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_4_3",
+      "type": "CONTAINS",
+      "evidence": "4.3 appears as reference in notes"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_annexA_caseA",
+      "type": "CONTAINS",
+      "evidence": "Annex A Case A reference present"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_annexA_caseB1",
+      "type": "CONTAINS",
+      "evidence": "Annex A Case B1 reference present"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_annexA_caseB2",
+      "type": "CONTAINS",
+      "evidence": "Annex A Case B2 reference present"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_annexA",
+      "type": "CONTAINS",
+      "evidence": "Annex A reference present"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_EN_1990_2002",
+      "type": "CONTAINS",
+      "evidence": "EN 1990:2002 reference present"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_EN_1990_2002_3_5",
+      "type": "CONTAINS",
+      "evidence": "EN 1990:2002, 3.5 reference present"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_page14",
+      "type": "CONTAINS",
+      "evidence": "page footer shows number 14 in image"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_section6",
+      "type": "CONTAINS",
+      "evidence": "Section 6 referenced in notes"
+    },
+    {
+      "source": "en_1991_1_3_2003_snow_loads_fig_p16_1",
+      "target": "en_1991_1_3_2003_snow_loads_param_note_A_caseA",
+      "type": "CONTAINS",
+      "evidence": "Note referencing Annex A case A"
+    }
+  ]
 }

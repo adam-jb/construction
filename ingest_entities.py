@@ -13,6 +13,7 @@ import sys
 import json
 import base64
 import fitz  # pymupdf
+import pdfplumber
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -25,8 +26,9 @@ load_dotenv()
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-MODEL = "gpt-5-nano-2025-08-07"  
+MODEL = "gpt-5-nano-2025-08-07"
 CHUNK_SIZE = 3000  # characters per chunk for LLM processing
+MIN_IMAGE_SIZE = 100  # minimum width/height in pixels to consider an image meaningful
 
 # =============================================================================
 # EXTRACTION PROMPT
@@ -117,7 +119,10 @@ def extract_text_from_pdf(pdf_path: str, start_page: int = 6, max_pages: int = N
 
 
 def extract_images_from_pdf(pdf_path: str, start_page: int = 6, max_pages: int = None) -> list[dict]:
-    """Extract images (figures, charts, graphs) from PDF."""
+    """Extract meaningful images (figures, charts, graphs) from PDF.
+
+    Filters out small decorative images like logos, bullets, icons.
+    """
     doc = fitz.open(pdf_path)
     images = []
 
@@ -137,6 +142,13 @@ def extract_images_from_pdf(pdf_path: str, start_page: int = 6, max_pages: int =
             xref = img[0]
             try:
                 base_image = doc.extract_image(xref)
+                width = base_image.get("width", 0)
+                height = base_image.get("height", 0)
+
+                # Skip small images (decorative, logos, bullets)
+                if width < MIN_IMAGE_SIZE or height < MIN_IMAGE_SIZE:
+                    continue
+
                 image_bytes = base_image["image"]
                 image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
@@ -144,13 +156,60 @@ def extract_images_from_pdf(pdf_path: str, start_page: int = 6, max_pages: int =
                     "page": page_num + 1,
                     "index": img_index,
                     "image_b64": image_b64,
-                    "ext": base_image.get("ext", "png")
+                    "ext": base_image.get("ext", "png"),
+                    "width": width,
+                    "height": height
                 })
             except Exception:
                 continue
 
     doc.close()
     return images
+
+
+def extract_tables_from_pdf(pdf_path: str, start_page: int = 6, max_pages: int = None) -> list[dict]:
+    """Extract tables from PDF using pdfplumber's table detection."""
+    tables = []
+
+    with pdfplumber.open(pdf_path) as pdf:
+        total_pages = len(pdf.pages)
+        start_idx = start_page - 1  # Convert to 0-indexed
+
+        if max_pages:
+            end_idx = min(total_pages, start_idx + max_pages)
+        else:
+            end_idx = total_pages
+
+        for page_num in range(start_idx, end_idx):
+            page = pdf.pages[page_num]
+            page_tables = page.extract_tables()
+
+            for table_idx, table_data in enumerate(page_tables):
+                if not table_data or len(table_data) < 2:  # Skip empty or single-row tables
+                    continue
+
+                # Convert to markdown for readability
+                headers = table_data[0] if table_data else []
+                rows = table_data[1:] if len(table_data) > 1 else []
+
+                # Clean up None values
+                headers = [str(h) if h else "" for h in headers]
+                rows = [[str(cell) if cell else "" for cell in row] for row in rows]
+
+                markdown = " | ".join(headers) + "\n"
+                markdown += " | ".join(["---"] * len(headers)) + "\n"
+                for row in rows:
+                    markdown += " | ".join(row) + "\n"
+
+                tables.append({
+                    "page": page_num + 1,
+                    "index": table_idx,
+                    "headers": headers,
+                    "rows": rows,
+                    "markdown": markdown.strip()
+                })
+
+    return tables
 
 
 def extract_entities_from_image(client: OpenAI, image_b64: str, ext: str, doc_name: str, page: int) -> dict:
@@ -211,7 +270,64 @@ Be exhaustive. Every fact = a node. Return valid JSON only."""
     )
 
     content = response.choices[0].message.content
-    return json.loads(content)
+    result = json.loads(content)
+
+    # Debug: print what was extracted
+    for e in result.get("entities", []):
+        etype = e.get('type', '?')
+        name = e.get('name', e.get('id', '?'))
+        val = e.get('value', '')
+        units = e.get('units', '')
+        print(f"      → {etype}: {name}" + (f" = {val}{units}" if val else ""))
+
+    return result
+
+
+def extract_entities_from_table(client: OpenAI, table: dict, doc_name: str) -> dict:
+    """Use LLM to extract entities from a detected table."""
+    prompt = f"""Extract entities from this table found in a construction design code.
+
+Document: {doc_name}
+Page: {table['page']}
+
+Table content (markdown):
+{table['markdown']}
+
+CRITICAL: Create a Parameter entity for EACH cell value that has meaning.
+Every numeric value, coefficient, factor, or named value = a separate Parameter node.
+
+Return JSON:
+{{
+  "entities": [
+    {{"type": "Table", "id": "table_p{table['page']}_{table['index']}", "name": "Table X.X", "title": "infer from content", "page": {table['page']}}},
+    {{"type": "Parameter", "id": "param_1", "name": "descriptive name", "value": "the value", "units": "if any", "context": "row/column context", "page": {table['page']}}},
+    ...more parameters for each meaningful cell...
+  ],
+  "relationships": [
+    {{"from_id": "table_p{table['page']}_{table['index']}", "type": "CONTAINS", "to_id": "param_1", "evidence": "row X, column Y"}}
+  ]
+}}
+
+Return valid JSON only."""
+
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"}
+    )
+
+    content = response.choices[0].message.content
+    result = json.loads(content)
+
+    # Debug: print what was extracted
+    for e in result.get("entities", []):
+        etype = e.get('type', '?')
+        name = e.get('name', e.get('id', '?'))
+        val = e.get('value', '')
+        units = e.get('units', '')
+        print(f"      → {etype}: {name}" + (f" = {val}{units}" if val else ""))
+
+    return result
 
 
 def chunk_text(text: str, chunk_size: int = CHUNK_SIZE) -> list[str]:
@@ -253,7 +369,17 @@ def extract_entities_from_chunk(client: OpenAI, text: str, doc_name: str, page: 
     )
 
     content = response.choices[0].message.content
-    return json.loads(content)
+    result = json.loads(content)
+
+    # Debug: print what was extracted
+    for e in result.get("entities", []):
+        etype = e.get('type', '?')
+        name = e.get('name', e.get('id', '?'))
+        val = e.get('value', '')
+        units = e.get('units', '')
+        print(f"      → {etype}: {name}" + (f" = {val}{units}" if val else ""))
+
+    return result
 
 
 def build_graph(extractions: list[dict], doc_id: str) -> dict:
@@ -329,10 +455,15 @@ def ingest_document(pdf_path: str, output_path: str = None, start_page: int = 6,
     pages = extract_text_from_pdf(pdf_path, start_page, max_pages)
     print(f"  Found {len(pages)} pages with text")
 
-    # Extract images (figures, charts, graphs)
+    # Extract tables (using pdfplumber's detection)
+    print("Extracting tables...")
+    tables = extract_tables_from_pdf(pdf_path, start_page, max_pages)
+    print(f"  Found {len(tables)} tables")
+
+    # Extract images (figures, charts, graphs) - filtered by size
     print("Extracting images...")
     images = extract_images_from_pdf(pdf_path, start_page, max_pages)
-    print(f"  Found {len(images)} images")
+    print(f"  Found {len(images)} meaningful images (filtered small/decorative)")
 
     # Initialize OpenAI client
     client = OpenAI(api_key=OPENAI_API_KEY)
@@ -367,6 +498,19 @@ def ingest_document(pdf_path: str, output_path: str = None, start_page: int = 6,
             except Exception as e:
                 processed += 1
                 print(f"  [{processed}/{total_chunks}] Page {page_data['page']}: Error - {e}")
+
+    # Process tables (detected by pdfplumber)
+    if tables:
+        print(f"Extracting entities from tables ({len(tables)} tables)...")
+        for i, table in enumerate(tables):
+            try:
+                extraction = extract_entities_from_table(client, table, doc_name)
+                if extraction.get("entities"):
+                    extractions.append(extraction)
+                    entity_count = len(extraction.get("entities", []))
+                    print(f"  [{i+1}/{len(tables)}] Page {table['page']}: {entity_count} entities from table")
+            except Exception as e:
+                print(f"  [{i+1}/{len(tables)}] Page {table['page']}: Error - {e}")
 
     # Process images
     if images:
