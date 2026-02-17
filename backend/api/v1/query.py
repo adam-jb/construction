@@ -20,6 +20,8 @@ class QueryResponse(BaseModel):
     references: list
     steps: list
     processingTime: int  # milliseconds
+    timings: dict = {}  # per-step timing breakdown
+    missingDocuments: list = []  # referenced but not loaded
 
 
 @router.post("/query")
@@ -75,4 +77,6 @@ async def query_documents(request: Request, body: QueryRequest) -> QueryResponse
         references=result.get("references", []),
         steps=result.get("steps", []),
         processingTime=elapsed_ms,
+        timings=result.get("timings", {}),
+        missingDocuments=result.get("missing_documents", []),
     )

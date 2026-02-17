@@ -6,19 +6,27 @@ Steps:
  2. Vector search (Pinecone top 10)
  3. Keyword extraction + KV expansion + keyword search
  4. Relevance check (LLM filters)
- 5. Expansion (if bottom-2 vector hits were relevant, fetch more)
+ 5. Expansion loop (keep fetching while bottom-2 hits are relevant)
  6-8. Follow references 1st/2nd/3rd order, check relevance each time
  9. Check precedence via dict lookup
 10. Conflict detection (LLM)
 11. Synthesize answer (LLM)
 """
 
+import asyncio
 import logging
 import re
+import time
 
 logger = logging.getLogger(__name__)
 
 MAX_REFERENCE_DEPTH = 3
+MAX_EXPANSION_ROUNDS = 5  # safety cap on expansion loops
+RELEVANCE_BATCH_SIZE = 4  # candidates per parallel LLM call
+
+
+def _ms_since(start: float) -> int:
+    return int((time.time() - start) * 1000)
 
 
 class QueryEngine:
@@ -39,26 +47,19 @@ class QueryEngine:
         idx = {}  # normalized_key -> actual_key
         all_keys = list(self.store.sections.keys()) + list(self.store.objects.keys())
         for key in all_keys:
-            # Exact key
             idx[key] = key
-            # Dots-to-underscores variant
             idx[key.replace(".", "_")] = key
-            # Strip trailing parens: key_5.2.3(1) -> key_5.2.3
             stripped = re.sub(r'\([^)]*\)$', '', key)
             if stripped != key:
                 idx.setdefault(stripped, key)
                 idx.setdefault(stripped.replace(".", "_"), key)
 
-        # Build cross-document lookup: extract document code patterns
-        # e.g., prefix "CEN_EN_1991-1-1:2002" should match refs like
-        # "EN_1991-1-1", "BS_EN_1991-1-1:2002", "EN1991-1-1"
         self._doc_code_to_prefix = {}
         for doc in self.store.documents.values():
             prefix = doc.get("key_prefix", "")
             code = doc.get("code", "")
             if not prefix:
                 continue
-            # Register various forms of the document code
             for variant in self._code_variants(code):
                 self._doc_code_to_prefix[variant] = prefix
 
@@ -66,52 +67,34 @@ class QueryEngine:
 
     @staticmethod
     def _code_variants(code: str) -> list[str]:
-        """Generate normalized variants of a document code for matching.
-
-        Must handle: "EN_1991-1-1:2002", "EN_1991-1-4:2005+A1",
-        "en_1991_1_6_2005", and refs like "EN_1991-1-4", "EN 1991-1-6".
-        """
+        """Generate normalized variants of a document code for matching."""
         variants = set()
         c = code.lower().strip()
         variants.add(c)
-
-        # Strip year/amendment suffixes: ":2002", ":2005+A1", "_2005", etc.
         no_year = re.sub(r'[_:]?\d{4}(\+\w+)?$', '', c)
         variants.add(no_year)
-
-        # Normalize separators: convert _ to - and vice versa
         for v in list(variants):
             variants.add(v.replace("_", "-"))
             variants.add(v.replace("-", "_"))
             variants.add(v.replace(" ", "_"))
             variants.add(v.replace(" ", "-"))
             variants.add(v.replace(" ", ""))
-
-        # Strip all non-alphanumeric except hyphens
         for v in list(variants):
             variants.add(re.sub(r'[^a-z0-9\-]', '', v))
-
         return list(variants)
 
     def _resolve_ref(self, ref_key: str) -> str | None:
-        """Try to resolve a reference key to an actual store key.
-
-        Tries: exact match, fuzzy match (dots/parens), cross-document match.
-        Returns the resolved key or None.
-        """
+        """Try to resolve a reference key to an actual store key."""
         if self._ref_index is None:
             self._build_ref_index()
 
-        # 1. Exact match
         if ref_key in self._ref_index:
             return self._ref_index[ref_key]
 
-        # 2. Dots-to-underscores
         normalized = ref_key.replace(".", "_")
         if normalized in self._ref_index:
             return self._ref_index[normalized]
 
-        # 3. Strip trailing parens
         stripped = re.sub(r'\([^)]*\)$', '', ref_key)
         if stripped in self._ref_index:
             return self._ref_index[stripped]
@@ -119,7 +102,6 @@ class QueryEngine:
         if stripped_norm in self._ref_index:
             return self._ref_index[stripped_norm]
 
-        # 4. Double-prefix fix: if key has prefix repeated, strip one
         for prefix in [doc.get("key_prefix", "") for doc in self.store.documents.values()]:
             doubled = prefix + "_" + prefix
             if ref_key.startswith(doubled):
@@ -127,27 +109,18 @@ class QueryEngine:
                 if fixed in self._ref_index:
                     return self._ref_index[fixed]
 
-        # 5. Cross-document: try to match a doc code in the ref key
-        #    e.g., "EN_1990" or "BS_EN_1991-1-2:2002" -> find matching prefix
         ref_lower = ref_key.lower()
-        # Also try canonical form (strip all non-alphanumeric)
         ref_canonical = re.sub(r'[^a-z0-9]', '', ref_lower)
         for code_variant, prefix in self._doc_code_to_prefix.items():
             cv_canonical = re.sub(r'[^a-z0-9]', '', code_variant)
             if code_variant in ref_lower or cv_canonical == ref_canonical or cv_canonical in ref_canonical:
-                # Found a matching document — now try to find the specific section
-                # Extract the section part after the doc code
-                # e.g., "EN_1990_4.1.2" -> section "4.1.2"
                 idx = ref_lower.find(code_variant)
                 remainder = ref_key[idx + len(code_variant):].lstrip("_:/ ")
                 if remainder:
-                    # Try to find prefix_remainder in our index
                     candidate = f"{prefix}_{remainder}"
                     resolved = self._resolve_ref_simple(candidate)
                     if resolved:
                         return resolved
-                # No specific section — just means "this document exists"
-                # Return the first section of this doc as a pointer
                 for k in self.store.sections:
                     if k.startswith(prefix) and not self.store.sections[k].get("is_raw_page"):
                         return k
@@ -167,47 +140,77 @@ class QueryEngine:
             return self._ref_index[stripped]
         return None
 
+    def _collect_missing_docs(self, ref_keys: set) -> list[str]:
+        """Track external document references we can't resolve."""
+        missing = set()
+        for ref_key in ref_keys:
+            if self._resolve_ref(ref_key):
+                continue
+            # Try to extract a document code from the unresolved ref
+            ref_lower = ref_key.lower()
+            # Match patterns like EN_1990, ISO_8930, ENV_1991-2-1:1995
+            m = re.match(r'((?:en[v]?|iso|bs)\s*[-_]?\s*[\d][\d\-_.:\s+a-z]*)', ref_lower)
+            if m:
+                doc_code = m.group(1).strip().rstrip("_-: ")
+                missing.add(doc_code.upper())
+        return sorted(missing)
+
     async def query(self, query_text: str) -> dict:
         """Run the full query pipeline. Returns structured response."""
+        pipeline_start = time.time()
         steps_log = []
+        timings = {}
 
         # Step 1: Intent classification
+        t0 = time.time()
         intent = await self._classify_intent(query_text)
+        timings["1_intent"] = _ms_since(t0)
         steps_log.append({"step": "intent", "result": intent})
+        logger.info(f"[query] step 1 intent: {intent} ({timings['1_intent']}ms)")
 
         if intent == "greeting":
             return {
                 "answer": "Hello! I can help you search construction standards (Eurocodes). Ask me about loads, densities, safety factors, or any technical question.",
-                "references": [],
-                "steps": steps_log,
+                "references": [], "steps": steps_log,
             }
-
         if intent == "clarification":
             return {
                 "answer": "Could you be more specific? For example:\n- \"What density should be used for reinforced concrete?\"\n- \"What are the factors of safety for dead loads?\"\n- \"What snow loads apply at 500m altitude?\"",
-                "references": [],
-                "steps": steps_log,
+                "references": [], "steps": steps_log,
             }
 
         # Step 2: Vector search
+        t0 = time.time()
         query_vec = await self.gemini.embed_query(query_text)
-        vector_hits = self.pinecone.search(query_vec, top_k=10)
+        timings["2a_embed"] = _ms_since(t0)
+
+        t0 = time.time()
+        top_k = 10
+        vector_hits = self.pinecone.search(query_vec, top_k=top_k)
         hit_ids = [h["id"] for h in vector_hits]
+        timings["2b_pinecone"] = _ms_since(t0)
         steps_log.append({"step": "vector_search", "hits": len(vector_hits),
                           "top_ids": hit_ids[:5]})
+        logger.info(f"[query] step 2 vector: embed={timings['2a_embed']}ms pinecone={timings['2b_pinecone']}ms hits={len(vector_hits)}")
 
         # Step 3: Keyword extraction + KV expansion + keyword search
+        t0 = time.time()
         keywords = await self._extract_keywords(query_text)
+        timings["3a_keywords_llm"] = _ms_since(t0)
+
+        t0 = time.time()
         expanded_keywords = self._expand_keywords_with_kv(keywords)
         keyword_hits = self._keyword_search(expanded_keywords)
+        timings["3b_keyword_search"] = _ms_since(t0)
         steps_log.append({"step": "keyword_search", "keywords": keywords,
                           "expanded": expanded_keywords,
                           "keyword_hits": len(keyword_hits)})
+        logger.info(f"[query] step 3 keywords: llm={timings['3a_keywords_llm']}ms search={timings['3b_keyword_search']}ms hits={len(keyword_hits)}")
 
         # Merge results (vector + keyword), de-duplicate
         all_candidate_ids = list(dict.fromkeys(hit_ids + keyword_hits))
 
-        # Build sections dict for candidates (check both sections and objects)
+        # Build sections dict for candidates
         candidates = {}
         for sid in all_candidate_ids:
             sec = self.store.sections.get(sid)
@@ -226,43 +229,88 @@ class QueryEngine:
         if not candidates:
             return {
                 "answer": "I couldn't find any relevant sections in the indexed documents for your query. Please try rephrasing or being more specific.",
-                "references": [],
-                "steps": steps_log,
+                "references": [], "steps": steps_log,
             }
 
         # Step 4: Relevance check
+        t0 = time.time()
         relevant_extracts = await self._check_relevance(query_text, candidates)
+        timings["4_relevance"] = _ms_since(t0)
         steps_log.append({"step": "relevance_check",
                           "candidates": len(candidates),
                           "relevant": len(relevant_extracts)})
+        logger.info(f"[query] step 4 relevance: {timings['4_relevance']}ms ({len(relevant_extracts)}/{len(candidates)} relevant)")
 
-        # Step 5: Expansion — if bottom 2 vector hits were relevant, fetch more
-        if len(vector_hits) >= 10:
+        # Step 5: Expansion loop — keep fetching while bottom-2 hits are relevant
+        t0 = time.time()
+        expansion_rounds = 0
+        while expansion_rounds < MAX_EXPANSION_ROUNDS:
+            if len(vector_hits) < top_k:
+                break  # not enough hits to justify expanding
             bottom_two = [h["id"] for h in vector_hits[-2:]]
-            if any(bid in relevant_extracts for bid in bottom_two):
-                extra_hits = self.pinecone.search(query_vec, top_k=20)
-                new_ids = [h["id"] for h in extra_hits if h["id"] not in candidates]
-                if new_ids:
-                    extra_candidates = {}
-                    for sid in new_ids:
-                        sec = self.store.sections.get(sid)
-                        if sec:
-                            extra_candidates[sid] = sec
-                    if extra_candidates:
-                        extra_relevant = await self._check_relevance(query_text, extra_candidates)
-                        relevant_extracts.update(extra_relevant)
-                        steps_log.append({"step": "expansion",
-                                          "extra_checked": len(extra_candidates),
-                                          "extra_relevant": len(extra_relevant)})
+            if not any(bid in relevant_extracts for bid in bottom_two):
+                break  # bottom hits aren't relevant, stop expanding
+
+            expansion_rounds += 1
+            top_k += 10
+            extra_hits = self.pinecone.search(query_vec, top_k=top_k)
+            new_ids = [h["id"] for h in extra_hits if h["id"] not in candidates]
+            if not new_ids:
+                break
+
+            extra_candidates = {}
+            for sid in new_ids:
+                sec = self.store.sections.get(sid)
+                if sec:
+                    extra_candidates[sid] = sec
+                else:
+                    obj = self.store.objects.get(sid)
+                    if obj:
+                        extra_candidates[sid] = {
+                            "section_code": obj.get("code", sid),
+                            "title": obj.get("title", ""),
+                            "content": obj.get("description", ""),
+                            "page": obj.get("page", 0),
+                        }
+            if not extra_candidates:
+                break
+
+            extra_relevant = await self._check_relevance(query_text, extra_candidates)
+            relevant_extracts.update(extra_relevant)
+            candidates.update(extra_candidates)
+            # Update vector_hits to be the new full set for next iteration's bottom-2 check
+            vector_hits = extra_hits
+
+            steps_log.append({"step": f"expansion_round_{expansion_rounds}",
+                              "top_k": top_k,
+                              "extra_checked": len(extra_candidates),
+                              "extra_relevant": len(extra_relevant)})
+
+        timings["5_expansion"] = _ms_since(t0)
+        logger.info(f"[query] step 5 expansion: {timings['5_expansion']}ms rounds={expansion_rounds}")
 
         # Steps 6-8: Follow references up to 3 levels
+        t0 = time.time()
         all_followed = set(relevant_extracts.keys())
-        unfollowed = []
+        all_unresolved_refs = set()
 
         for depth in range(1, MAX_REFERENCE_DEPTH + 1):
             ref_ids = set()
             for sid in list(relevant_extracts.keys()):
                 refs = self.store.references.get(sid, [])
+
+                # Raw pages have no references — bridge to LLM sections
+                # on the same page to pick up their references
+                if not refs and self.store.sections.get(sid, {}).get("is_raw_page"):
+                    page_num = self.store.sections[sid].get("page")
+                    prefix = self.store.sections[sid].get("doc_key_prefix", "")
+                    for k, s in self.store.sections.items():
+                        if (k.startswith(prefix) and not s.get("is_raw_page")
+                                and s.get("page") == page_num):
+                            refs = self.store.references.get(k, [])
+                            if refs:
+                                break
+
                 for ref_key in refs:
                     if ref_key not in all_followed:
                         ref_ids.add(ref_key)
@@ -270,13 +318,13 @@ class QueryEngine:
             if not ref_ids:
                 break
 
-            # Look up referenced sections (with fuzzy resolution)
+            # Track unresolved for master doc list
             ref_candidates = {}
             for rid in ref_ids:
                 resolved_key = self._resolve_ref(rid)
                 if not resolved_key:
+                    all_unresolved_refs.add(rid)
                     continue
-                # Use the resolved key for lookup
                 sec = self.store.sections.get(resolved_key)
                 if sec:
                     ref_candidates[resolved_key] = sec
@@ -300,17 +348,25 @@ class QueryEngine:
             else:
                 all_followed.update(ref_ids)
 
-        # Collect any 4th+ order refs as unfollowed
+        timings["6_8_refs"] = _ms_since(t0)
+        logger.info(f"[query] steps 6-8 refs: {timings['6_8_refs']}ms")
+
+        # Collect unfollowed 4th+ order refs
+        unfollowed = []
         for sid in relevant_extracts:
             refs = self.store.references.get(sid, [])
             for ref_key in refs:
                 if ref_key not in all_followed:
                     unfollowed.append(ref_key)
+                    all_unresolved_refs.add(ref_key)
+
+        # Build missing documents list from all unresolved refs
+        missing_docs = self._collect_missing_docs(all_unresolved_refs)
 
         # Step 9: Check precedence
+        t0 = time.time()
         precedence_notes = []
         for sid in relevant_extracts:
-            # Check if this section's document has precedence rules
             prefix = self.store.sections.get(sid, {}).get("doc_key_prefix", "")
             for pkey, prule in self.store.precedence.items():
                 if pkey.startswith(prefix):
@@ -320,40 +376,44 @@ class QueryEngine:
                         "superseded_by": prule.get("superseded_by", []),
                         "note": prule.get("note", ""),
                     })
-        # De-duplicate
         seen_pkeys = set()
         unique_precedence = []
         for p in precedence_notes:
             if p["key"] not in seen_pkeys:
                 seen_pkeys.add(p["key"])
                 unique_precedence.append(p)
+        timings["9_precedence"] = _ms_since(t0)
         steps_log.append({"step": "precedence", "rules": len(unique_precedence)})
+        logger.info(f"[query] step 9 precedence: {timings['9_precedence']}ms")
 
         # Step 10: Conflict detection
+        t0 = time.time()
         conflicts = []
         if len(relevant_extracts) > 1:
             conflicts = await self._check_conflicts(query_text, relevant_extracts)
+        timings["10_conflicts"] = _ms_since(t0)
         steps_log.append({"step": "conflicts", "found": len(conflicts)})
+        logger.info(f"[query] step 10 conflicts: {timings['10_conflicts']}ms")
 
         # Step 11: Synthesize answer
+        t0 = time.time()
         answer = await self._synthesize_answer(
-            query_text, relevant_extracts, unique_precedence, conflicts, unfollowed
+            query_text, relevant_extracts, unique_precedence, conflicts,
+            unfollowed, missing_docs
         )
+        timings["11_synthesize"] = _ms_since(t0)
+        logger.info(f"[query] step 11 synthesize: {timings['11_synthesize']}ms")
 
         # Build references list for API response
         references = []
         for sid, extract in relevant_extracts.items():
             sec = self.store.sections.get(sid, {})
             obj = self.store.objects.get(sid, {})
-
-            # Resolve doc_id to key_prefix for consistent lookup
             doc_prefix = sec.get("doc_key_prefix", "")
             if not doc_prefix and obj:
-                # Objects store raw doc_id; resolve to key_prefix
                 raw_doc_id = obj.get("doc_id", "")
                 doc = self.store.documents.get(raw_doc_id, {})
                 doc_prefix = doc.get("key_prefix", "")
-
             references.append({
                 "id": sid,
                 "section_code": sec.get("section_code") or obj.get("code", sid),
@@ -363,11 +423,18 @@ class QueryEngine:
                 "doc_id": doc_prefix,
             })
 
+        total_ms = _ms_since(pipeline_start)
+        timings["total"] = total_ms
+        logger.info(f"[query] TOTAL: {total_ms}ms | refs={len(references)} | missing_docs={missing_docs}")
+        logger.info(f"[query] TIMINGS: {timings}")
+
         self._last_results = relevant_extracts
         return {
             "answer": answer,
             "references": references,
             "steps": steps_log,
+            "timings": timings,
+            "missing_documents": missing_docs,
         }
 
     # ----- Step implementations -----
@@ -390,7 +457,6 @@ Return exactly one word: greeting, clarification, follow_up, or query"""
             result = (await self.gemini.generate(prompt)).strip().lower()
             if result in ("greeting", "clarification", "follow_up", "query"):
                 return result
-            # If LLM returns something unexpected, default to query
             return "query"
         except Exception as e:
             logger.warning(f"Intent classification failed: {e}")
@@ -410,7 +476,6 @@ Return JSON array of keywords:
             return await self.gemini.generate_json(prompt)
         except Exception as e:
             logger.warning(f"Keyword extraction failed: {e}")
-            # Fallback: simple word extraction
             words = re.findall(r'\b[a-zA-Z]{3,}\b', query_text.lower())
             stop = {"what", "where", "when", "which", "that", "this", "with",
                     "from", "have", "does", "should", "would", "could", "the",
@@ -422,23 +487,18 @@ Return JSON array of keywords:
         expanded = list(keywords)
         for kw in keywords:
             kw_lower = kw.lower()
-            # Check KV store for matching keys
             for key, val in self.store.kv_store.items():
                 key_lower = key.lower()
                 if isinstance(val, dict):
                     definition = val.get("value", "").lower()
                 else:
                     definition = str(val).lower()
-
-                # If keyword matches a KV key or appears in a definition
                 if kw_lower == key_lower:
-                    # Add words from the definition
                     def_words = re.findall(r'\b[a-zA-Z]{3,}\b', definition)
                     expanded.extend(def_words[:3])
                 elif kw_lower in definition:
                     expanded.append(key)
-
-        return list(dict.fromkeys(expanded))  # de-duplicate preserving order
+        return list(dict.fromkeys(expanded))
 
     def _keyword_search(self, keywords: list[str]) -> list[str]:
         """Search sections by keyword matching."""
@@ -452,11 +512,10 @@ Return JSON array of keywords:
                 if kw_lower in content:
                     score += content.count(kw_lower)
                 if kw_lower in title:
-                    score += 5  # title match is worth more
+                    score += 5
             if score > 0:
                 matches.append((sid, score))
 
-        # Also search objects (tables, figures)
         for oid, obj in self.store.objects.items():
             desc = (obj.get("description") or "").lower()
             title = (obj.get("title") or "").lower()
@@ -477,23 +536,44 @@ Return JSON array of keywords:
         return [m[0] for m in matches[:20]]
 
     async def _check_relevance(self, query_text: str, candidates: dict) -> dict:
-        """LLM checks which sections are relevant and extracts useful text."""
+        """LLM checks which sections are relevant and extracts useful text.
+
+        Splits candidates into batches and runs them in parallel for speed.
+        """
         if not candidates:
             return {}
 
-        # Build sections payload (limit text size)
+        # Split into batches
+        items = list(candidates.items())
+        batches = [dict(items[i:i + RELEVANCE_BATCH_SIZE])
+                   for i in range(0, len(items), RELEVANCE_BATCH_SIZE)]
+
+        if len(batches) == 1:
+            return await self._check_relevance_batch(query_text, batches[0])
+
+        # Run batches in parallel
+        logger.info(f"[query] relevance: {len(candidates)} candidates -> {len(batches)} parallel batches")
+        tasks = [self._check_relevance_batch(query_text, batch) for batch in batches]
+        results = await asyncio.gather(*tasks)
+
+        # Merge all results
+        merged = {}
+        for r in results:
+            merged.update(r)
+        return merged
+
+    async def _check_relevance_batch(self, query_text: str, candidates: dict) -> dict:
+        """Single-batch relevance check via LLM."""
+        import json
+
         sections_payload = {}
         for sid, sec in candidates.items():
-            content = sec.get("content", "")
-            if len(content) > 3000:
-                content = content[:3000] + "..."
             sections_payload[sid] = {
                 "code": sec.get("section_code", sid),
                 "title": sec.get("title", ""),
-                "content": content,
+                "content": sec.get("content", ""),
             }
 
-        import json
         prompt = f"""For each section below, extract ONLY the text that is directly relevant to answering this query.
 Include contextual information that helps interpret the relevant parts (e.g. table headers, units, conditions).
 If a section has no relevant information, set its value to null.
@@ -507,11 +587,9 @@ Return JSON object mapping section keys to extracted relevant text (or null):"""
 
         try:
             result = await self.gemini.generate_json(prompt)
-            # Filter out null values
             return {k: v for k, v in result.items() if v is not None and v}
         except Exception as e:
-            logger.warning(f"Relevance check failed: {e}")
-            # Fallback: include all candidates with their content
+            logger.warning(f"Relevance batch failed: {e}")
             return {sid: sec.get("content", "")[:500]
                     for sid, sec in candidates.items()}
 
@@ -545,11 +623,10 @@ If no conflicts, return: []"""
 
     async def _synthesize_answer(self, query_text: str, extracts: dict,
                                   precedence: list, conflicts: list,
-                                  unfollowed: list) -> str:
+                                  unfollowed: list, missing_docs: list) -> str:
         """Final answer synthesis with citations."""
         import json
 
-        # Build extracts text with section info
         extracts_text = ""
         for sid, text in extracts.items():
             sec = self.store.sections.get(sid, {})
@@ -562,6 +639,7 @@ If no conflicts, return: []"""
         precedence_text = json.dumps(precedence, indent=1) if precedence else "None"
         conflicts_text = json.dumps(conflicts, indent=1) if conflicts else "None"
         unfollowed_text = ", ".join(unfollowed[:10]) if unfollowed else "None"
+        missing_text = ", ".join(missing_docs[:10]) if missing_docs else "None"
 
         prompt = f"""You are answering a question about construction standards (Eurocodes).
 Use ONLY the provided extracts to answer. Cite every piece of information with its source.
@@ -579,6 +657,7 @@ IMPORTANT formatting rules:
 If there are precedence notes, mention which standard takes priority.
 If there are conflicts, highlight them clearly.
 If there are unfollowed references, mention them as "Further references available".
+If there are missing documents, note them as "Referenced but not loaded" so the user knows.
 
 Query: "{query_text}"
 
@@ -592,15 +671,16 @@ Conflicts:
 {conflicts_text}
 
 Unfollowed references:
-{unfollowed_text}"""
+{unfollowed_text}
+
+Referenced documents not loaded in system:
+{missing_text}"""
 
         try:
             answer = await self.gemini.generate(prompt)
-            # Safety truncation — LLM occasionally produces extremely long output
             if len(answer) > 10000:
                 answer = answer[:10000] + "\n\n*[Answer truncated for length]*"
             return answer
         except Exception as e:
             logger.error(f"Answer synthesis failed: {e}")
-            # Fallback: return raw extracts
             return f"Error synthesizing answer. Raw relevant sections:\n{extracts_text}"
