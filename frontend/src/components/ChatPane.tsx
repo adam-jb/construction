@@ -1,6 +1,7 @@
 ﻿import { useState } from 'react';
 import { Send, Loader2, ChevronLeft, ChevronRight, ArrowLeft, Archive, MoreVertical, Copy, ThumbsUp, ThumbsDown, Edit2, Check } from 'lucide-react';
 import { ChatSession, ChatMessage } from '../types';
+import apiClient from '../api/client';
 
 interface ChatPaneProps {
   collapsed: boolean;
@@ -229,14 +230,15 @@ export default function ChatPane({ collapsed, onToggleCollapse }: ChatPaneProps)
     e.preventDefault();
     if (!query.trim() || isProcessing) return;
 
+    const userQuery = query.trim();
     setIsProcessing(true);
     
     // Create or update session
     if (!activeSession) {
       const newSession: ChatSession = {
         id: `session-${Date.now()}`,
-        name: query.substring(0, 50),
-        lastMessage: query,
+        name: userQuery.substring(0, 50),
+        lastMessage: userQuery,
         lastAccessedAt: new Date(),
         archived: false,
         messages: []
@@ -248,7 +250,7 @@ export default function ChatPane({ collapsed, onToggleCollapse }: ChatPaneProps)
     const userMessage: ChatMessage = {
       id: `msg-${Date.now()}`,
       type: 'user',
-      text: query,
+      text: userQuery,
       timestamp: new Date()
     };
     
@@ -259,24 +261,68 @@ export default function ChatPane({ collapsed, onToggleCollapse }: ChatPaneProps)
     
     setQuery('');
     
-    // Simulate AI response
-    setTimeout(() => {
+    try {
+      // Build conversation history for API
+      const currentMessages = activeSession?.messages || [];
+      const allMessages: Array<{role: 'user' | 'assistant'; content: string; references: any[]}> = [
+        ...currentMessages.map(msg => ({
+          role: (msg.type === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+          content: msg.text,
+          references: msg.references || []
+        })),
+        {
+          role: 'user' as const,
+          content: userQuery,
+          references: []
+        }
+      ];
+
+      // Call real API
+      const response = await apiClient.query({
+        messages: allMessages
+      });
+
+      // Add AI response
       const aiMessage: ChatMessage = {
-        id: `msg-${Date.now()}-ai`,
+        id: response.queryId || `msg-${Date.now()}-ai`,
         type: 'assistant',
-        text: 'This is a simulated response. The real API integration will provide actual answers based on your construction documents.',
+        text: response.answer,
+        timestamp: new Date(),
+        references: response.references?.map(ref => ({
+          docId: ref.documentId,
+          page: ref.page,
+          label: ref.label,
+          highlightText: ref.highlightText
+        }))
+      };
+      
+      setActiveSession(prev => prev ? {
+        ...prev,
+        messages: [...prev.messages, userMessage, aiMessage],
+        lastMessage: userQuery,
+        lastAccessedAt: new Date()
+      } : null);
+      
+    } catch (error) {
+      console.error('Query failed:', error);
+      
+      // Add error message
+      const errorMessage: ChatMessage = {
+        id: `msg-${Date.now()}-error`,
+        type: 'assistant',
+        text: `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
         timestamp: new Date()
       };
       
       setActiveSession(prev => prev ? {
         ...prev,
-        messages: [...prev.messages, aiMessage],
-        lastMessage: query,
+        messages: [...prev.messages, userMessage, errorMessage],
+        lastMessage: userQuery,
         lastAccessedAt: new Date()
       } : null);
-      
+    } finally {
       setIsProcessing(false);
-    }, 2000);
+    }
   };
 
   const handleCopy = (text: string) => {

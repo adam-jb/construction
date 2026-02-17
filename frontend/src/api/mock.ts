@@ -169,7 +169,7 @@ export const mockAPI = {
     await delay(1500); // Simulate AI processing time
     
     // Find matching mock response
-    const queryLower = request.query.toLowerCase();
+    const queryLower = (request.query || request.messages?.[request.messages.length - 1]?.content || '').toLowerCase();
     for (const [key, response] of Object.entries(mockQueryResponses)) {
       if (queryLower.includes(key)) {
         return {
