@@ -213,6 +213,27 @@ class GeminiService:
             return await self.generate_json(prompt, system,
                                             model=OPENROUTER_FALLBACK_MODEL)
 
+    async def generate_chat(self, messages: list[dict], system: str = "",
+                            model: str | None = None) -> str:
+        """Send a full conversation (list of {role, content} dicts) to the LLM."""
+        api_messages = []
+        if system:
+            api_messages.append({"role": "system", "content": system})
+        for msg in messages:
+            api_messages.append({
+                "role": msg["role"],
+                "content": msg["content"],
+            })
+
+        payload = {
+            "model": model or OPENROUTER_MODEL,
+            "messages": api_messages,
+            "temperature": 0.3,
+        }
+
+        data = await self._request_with_retry(payload)
+        return data["choices"][0]["message"]["content"]
+
     async def generate_with_image(self, prompt: str, image_bytes: bytes) -> str:
         b64 = base64.b64encode(image_bytes).decode()
         messages = [{
