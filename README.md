@@ -29,15 +29,12 @@ Frontend (React + TypeScript)
     ↓
 Backend (FastAPI + Python)
     ↓ ↓ ↓
-Neo4j Graph DB | GCP Vector Search | OpenAI LLM
+R2 files | Pinecone Vector Search | OpenRouter LLM | OpenAI embeddings
 ```
 
 **Key Technologies:**
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS, PDF.js
 - **Backend**: FastAPI, Python 3.11+
-- **Storage**: GCP Cloud Storage (PDF files)
-- **Search**: GCP Vector Search (embeddings), Neo4j (relationships)
-- **AI**: OpenAI GPT-4 (generation), OpenAI Embeddings (search)
 
 ---
 
@@ -65,20 +62,17 @@ construction/
 ### Local Development
 
 ```bash
-# 1. Start services (Neo4j)
-docker-compose up -d
-
-# 2. Install shared types
+# 1. Install shared types
 cd shared && npm install && npm run build && cd ..
 
-# 3. Start backend
+# 2. Start backend
 cd backend
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 
-# 4. Start frontend (new terminal)
+# 3. Start frontend (new terminal)
 cd frontend
 npm install
 npm run dev
