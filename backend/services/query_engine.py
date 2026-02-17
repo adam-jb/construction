@@ -122,7 +122,7 @@ class QueryEngine:
                     if resolved:
                         return resolved
                 for k in self.store.sections:
-                    if k.startswith(prefix) and not self.store.sections[k].get("is_raw_page"):
+                    if k.startswith(prefix):
                         return k
                 break
 
@@ -298,19 +298,6 @@ class QueryEngine:
             ref_ids = set()
             for sid in list(relevant_extracts.keys()):
                 refs = self.store.references.get(sid, [])
-
-                # Raw pages have no references — bridge to LLM sections
-                # on the same page to pick up their references
-                if not refs and self.store.sections.get(sid, {}).get("is_raw_page"):
-                    page_num = self.store.sections[sid].get("page")
-                    prefix = self.store.sections[sid].get("doc_key_prefix", "")
-                    for k, s in self.store.sections.items():
-                        if (k.startswith(prefix) and not s.get("is_raw_page")
-                                and s.get("page") == page_num):
-                            refs = self.store.references.get(k, [])
-                            if refs:
-                                break
-
                 for ref_key in refs:
                     if ref_key not in all_followed:
                         ref_ids.add(ref_key)

@@ -17,6 +17,40 @@ MAX_RETRIES = 3
 RETRY_BASE_DELAY = 30  # seconds
 
 
+def _find_matching_bracket(text: str, start: int) -> int:
+    """Find the matching closing bracket using depth counting.
+
+    Handles nested brackets inside JSON strings correctly by tracking
+    whether we're inside a string literal.
+    """
+    open_b = text[start]
+    close_b = ']' if open_b == '[' else '}'
+    depth = 0
+    in_string = False
+    escape = False
+
+    for i in range(start, len(text)):
+        ch = text[i]
+        if escape:
+            escape = False
+            continue
+        if ch == '\\' and in_string:
+            escape = True
+            continue
+        if ch == '"' and not escape:
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == open_b:
+            depth += 1
+        elif ch == close_b:
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+
 def _parse_json_lenient(text: str) -> dict | list:
     """Parse JSON leniently — handle common LLM output issues."""
     text = text.strip()
@@ -30,11 +64,9 @@ def _parse_json_lenient(text: str) -> dict | list:
         match = re.search(r'[\[{]', text)
         if match:
             start = match.start()
-            bracket = text[start]
-            close = ']' if bracket == '[' else '}'
-            last_close = text.rfind(close)
-            if last_close > start:
-                text = text[start:last_close + 1]
+            end = _find_matching_bracket(text, start)
+            if end > start:
+                text = text[start:end + 1]
 
     def _try_parse(t: str):
         try:
