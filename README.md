@@ -29,15 +29,12 @@ Frontend (React + TypeScript)
     ↓
 Backend (FastAPI + Python)
     ↓ ↓ ↓
-Neo4j Graph DB | GCP Vector Search | OpenAI LLM
+R2 files | Pinecone Vector Search | OpenRouter LLM | OpenAI embeddings
 ```
 
 **Key Technologies:**
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS, PDF.js
 - **Backend**: FastAPI, Python 3.11+
-- **Storage**: GCP Cloud Storage (PDF files)
-- **Search**: GCP Vector Search (embeddings), Neo4j (relationships)
-- **AI**: OpenAI GPT-4 (generation), OpenAI Embeddings (search)
 
 ---
 
@@ -65,20 +62,17 @@ construction/
 ### Local Development
 
 ```bash
-# 1. Start services (Neo4j)
-docker-compose up -d
-
-# 2. Install shared types
+# 1. Install shared types
 cd shared && npm install && npm run build && cd ..
 
-# 3. Start backend
+# 2. Start backend
 cd backend
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 
-# 4. Start frontend (new terminal)
+# 3. Start frontend (new terminal)
 cd frontend
 npm install
 npm run dev
@@ -86,6 +80,68 @@ npm run dev
 
 Frontend runs at http://localhost:5173  
 Backend API docs at http://localhost:8000/docs
+
+---
+
+## Example Queries
+
+The `/api/v1/query` endpoint accepts either a plain `query` string or a `messages` array for multi-turn conversation. The classifier routes each request as either `"query"` (run the full document search pipeline) or `"chat"` (conversational response, no search).
+
+### 1. Single-shot technical question (backwards-compatible)
+
+```bash
+curl -X POST http://localhost:8000/api/v1/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What density should be used for reinforced concrete?"}'
+```
+
+Classified as **query** — runs the full 11-step pipeline (vector search, keyword expansion, reference following, answer synthesis).
+
+### 2. Greeting via conversation
+
+```bash
+curl -X POST http://localhost:8000/api/v1/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {"role": "user", "content": "Hi, can you help me with Eurocode load combinations?"}
+    ]
+  }'
+```
+
+Classified as **chat** — returns a conversational reply, no document search.
+
+### 3. New technical question in a conversation
+
+```bash
+curl -X POST http://localhost:8000/api/v1/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {"role": "user", "content": "Hello"},
+      {"role": "assistant", "content": "Hi! I can help you search Eurocodes..."},
+      {"role": "user", "content": "What are the partial safety factors for dead loads on a concrete bridge?"}
+    ]
+  }'
+```
+
+Classified as **query** — the latest message is a real technical question, so the full pipeline runs.
+
+### 4. Follow-up about previous results
+
+```bash
+curl -X POST http://localhost:8000/api/v1/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {"role": "user", "content": "What are the partial safety factors for dead loads?"},
+      {"role": "assistant", "content": "According to EN 1990 Table A2.4(B)...", "references": [{"section_code": "EN_1990_A2.4", "page": 42}]},
+      {"role": "user", "content": "Can you explain what the gamma_G,sup value means in that table?"}
+    ]
+  }'
+```
+
+Classified as **chat** — the user is asking about results already returned, so the LLM answers from conversation context without re-searching.
 
 ---
 

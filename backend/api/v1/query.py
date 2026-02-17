@@ -1,126 +1,124 @@
-from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
-from typing import List, Optional, Any, Dict
+import base64
+import logging
+import time
+import uuid
 
+from fastapi import APIRouter, HTTPException, Request, status
+from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# Request/Response Models
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+    references: list = []
+
+
 class QueryRequest(BaseModel):
-    query: str
-    documentIds: Optional[List[str]] = None
-    filters: Optional[Dict[str, Any]] = None
-    options: Optional[Dict[str, Any]] = None
-
-
-class Reference(BaseModel):
-    id: str
-    documentId: str
-    documentName: str
-    page: int
-    section: Optional[str] = None
-    label: str
-    excerpt: str
-    highlightText: Optional[List[str]] = None
-    confidence: Optional[float] = None
-
-
-class ReasoningStep(BaseModel):
-    step: int
-    description: str
-    action: str
-    details: Optional[Dict[str, Any]] = None
+    query: str = ""  # kept for backwards compat
+    messages: list[ChatMessage] = []
 
 
 class QueryResponse(BaseModel):
     queryId: str
     answer: str
-    references: List[Reference]
-    reasoning: Optional[List[ReasoningStep]] = None
-    confidence: Optional[float] = None
-    processingTime: Optional[int] = None
+    references: list
+    steps: list
+    processingTime: int  # milliseconds
+    timings: dict = {}  # per-step timing breakdown
+    missingDocuments: list = []  # referenced but not loaded
+
+
+def _strip_base64_from_messages(messages: list[dict]) -> list[dict]:
+    """Remove page_image_base64 from references in message history."""
+    cleaned = []
+    for msg in messages:
+        refs = msg.get("references", [])
+        cleaned_refs = [
+            {k: v for k, v in ref.items() if k != "page_image_base64"}
+            for ref in refs
+        ]
+        cleaned.append({**msg, "references": cleaned_refs})
+    return cleaned
 
 
 @router.post("/query")
-async def query_documents(request: QueryRequest) -> QueryResponse:
-    """
-    Query documents with natural language
-    
-    TODO: Implement the full query pipeline:
-    
-    1. Generate query embedding (OpenAI embeddings API)
-    2. Vector similarity search (GCP Vector Search)
-       - Get top K relevant chunks
-    3. Graph traversal (Neo4j Cypher queries)
-       - Find related sections via cross-references
-       - Traverse relationships: REFERENCES, CITES, etc.
-    4. Context assembly
-       - Combine vector search results + graph context
-       - Rank by relevance
-    5. LLM synthesis (OpenAI GPT-4)
-       - System prompt: "You are an expert in construction codes..."
-       - Few-shot examples for citation format
-       - Include retrieved chunks as context
-    6. Citation extraction
-       - Parse LLM response for citations
-       - Map citations back to source documents/pages
-    7. Format response
-       - Return answer + references + reasoning steps
-    
-    Example Neo4j Cypher for graph traversal:
-    ```cypher
-    MATCH (s:Section {id: $sectionId})
-    MATCH path = (s)-[:REFERENCES|CITES*1..2]-(related:Section)
-    RETURN related, path
-    LIMIT 10
-    ```
-    
-    Example LLM prompt:
-    ```
-    You are an expert in Australian construction codes and standards.
-    Answer the user's question using ONLY the provided context.
-    Always cite sources with [Doc Name, Page X, Section Y.Z].
-    
-    Context:
-    [Retrieved chunks here]
-    
-    Question: {user_query}
-    
-    Answer:
-    ```
-    """
-    if not request.query or len(request.query.strip()) == 0:
+async def query_documents(request: Request, body: QueryRequest) -> QueryResponse:
+    """Query documents with natural language."""
+    # Extract query text and messages
+    if body.messages:
+        # Find the latest user message
+        user_msgs = [m for m in body.messages if m.role == "user"]
+        if not user_msgs:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No user message found in messages",
+            )
+        query_text = user_msgs[-1].content.strip()
+        messages = _strip_base64_from_messages(
+            [m.model_dump() for m in body.messages]
+        )
+    elif body.query:
+        query_text = body.query.strip()
+        messages = [{"role": "user", "content": query_text, "references": []}]
+    else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Query cannot be empty"
+            detail="Query cannot be empty",
         )
-    
-    # Mock response for now
+
+    if not query_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Query cannot be empty",
+        )
+
+    engine = request.app.state.engine
+    store = request.app.state.store
+    start = time.time()
+
+    try:
+        result = await engine.query(query_text, messages=messages)
+    except Exception as e:
+        logger.error(f"Query failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Query processing failed: {str(e)}",
+        )
+
+    # Enrich references with base64 page images
+    for ref in result.get("references", []):
+        page_num = ref.get("page", 0)
+        doc_id = ref.get("doc_id", "")
+
+        # Find the actual doc_id from the prefix
+        actual_doc_id = None
+        for did, doc in store.documents.items():
+            if doc.get("key_prefix", "") == doc_id:
+                actual_doc_id = did
+                break
+
+        if actual_doc_id and page_num:
+            try:
+                img_bytes = store.download_file(
+                    f"images/{actual_doc_id}/page_{page_num}.png"
+                )
+                ref["page_image_base64"] = base64.b64encode(img_bytes).decode()
+            except Exception:
+                ref["page_image_base64"] = None
+        else:
+            ref["page_image_base64"] = None
+
+    elapsed_ms = int((time.time() - start) * 1000)
+
     return QueryResponse(
-        queryId="query-123",
-        answer="This is a mock response. Backend implementation pending.",
-        references=[],
-        reasoning=[
-            ReasoningStep(
-                step=1,
-                description="Generated query embedding",
-                action="search"
-            ),
-            ReasoningStep(
-                step=2,
-                description="Searched vector database",
-                action="search"
-            ),
-            ReasoningStep(
-                step=3,
-                description="Traversed document graph",
-                action="graph_traverse"
-            ),
-            ReasoningStep(
-                step=4,
-                description="Synthesized answer with LLM",
-                action="synthesize"
-            ),
-        ],
-        processingTime=1500
+        queryId=str(uuid.uuid4())[:8],
+        answer=result.get("answer", ""),
+        references=result.get("references", []),
+        steps=result.get("steps", []),
+        processingTime=elapsed_ms,
+        timings=result.get("timings", {}),
+        missingDocuments=result.get("missing_documents", []),
     )
