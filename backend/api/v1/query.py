@@ -10,8 +10,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+    references: list = []
+
+
 class QueryRequest(BaseModel):
-    query: str
+    query: str = ""  # kept for backwards compat
+    messages: list[ChatMessage] = []
 
 
 class QueryResponse(BaseModel):
@@ -24,10 +31,45 @@ class QueryResponse(BaseModel):
     missingDocuments: list = []  # referenced but not loaded
 
 
+def _strip_base64_from_messages(messages: list[dict]) -> list[dict]:
+    """Remove page_image_base64 from references in message history."""
+    cleaned = []
+    for msg in messages:
+        refs = msg.get("references", [])
+        cleaned_refs = [
+            {k: v for k, v in ref.items() if k != "page_image_base64"}
+            for ref in refs
+        ]
+        cleaned.append({**msg, "references": cleaned_refs})
+    return cleaned
+
+
 @router.post("/query")
 async def query_documents(request: Request, body: QueryRequest) -> QueryResponse:
     """Query documents with natural language."""
-    if not body.query or len(body.query.strip()) == 0:
+    # Extract query text and messages
+    if body.messages:
+        # Find the latest user message
+        user_msgs = [m for m in body.messages if m.role == "user"]
+        if not user_msgs:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No user message found in messages",
+            )
+        query_text = user_msgs[-1].content.strip()
+        messages = _strip_base64_from_messages(
+            [m.model_dump() for m in body.messages]
+        )
+    elif body.query:
+        query_text = body.query.strip()
+        messages = [{"role": "user", "content": query_text, "references": []}]
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Query cannot be empty",
+        )
+
+    if not query_text:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Query cannot be empty",
@@ -38,7 +80,7 @@ async def query_documents(request: Request, body: QueryRequest) -> QueryResponse
     start = time.time()
 
     try:
-        result = await engine.query(body.query.strip())
+        result = await engine.query(query_text, messages=messages)
     except Exception as e:
         logger.error(f"Query failed: {e}")
         raise HTTPException(

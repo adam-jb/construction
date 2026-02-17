@@ -4,8 +4,15 @@
 
 import { Reference } from './references';
 
+export interface ChatMessagePayload {
+  role: 'user' | 'assistant';
+  content: string;
+  references?: any[];
+}
+
 export interface QueryRequest {
-  query: string;
+  query?: string;
+  messages?: ChatMessagePayload[];
   documentIds?: string[];
   filters?: QueryFilters;
   options?: QueryOptions;

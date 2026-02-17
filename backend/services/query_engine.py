@@ -1,16 +1,17 @@
 """
-Query Engine — 11-step pipeline for answering construction code questions.
+Query Engine — multi-turn conversation + 11-step pipeline.
 
-Steps:
- 1. Classify intent (greeting / clarification / follow_up / query)
- 2. Vector search (Pinecone top 10)
- 3. Keyword extraction + KV expansion + keyword search
- 4. Relevance check (LLM filters)
- 5. Expansion loop (keep fetching while bottom-2 hits are relevant)
- 6-8. Follow references 1st/2nd/3rd order, check relevance each time
- 9. Check precedence via dict lookup
-10. Conflict detection (LLM)
-11. Synthesize answer (LLM)
+Step 1 classifies the latest message as "query" or "chat":
+  - "chat" → conversational LLM response (no document search)
+  - "query" → full pipeline:
+     2. Vector search (Pinecone top 10)
+     3. Keyword extraction + KV expansion + keyword search
+     4. Relevance check (LLM filters)
+     5. Expansion loop (keep fetching while bottom-2 hits are relevant)
+     6-8. Follow references 1st/2nd/3rd order, check relevance each time
+     9. Check precedence via dict lookup
+    10. Conflict detection (LLM)
+    11. Synthesize answer (LLM)
 """
 
 import asyncio
@@ -29,12 +30,15 @@ def _ms_since(start: float) -> int:
     return int((time.time() - start) * 1000)
 
 
+CONVERSATION_MODEL = "google/gemini-3-flash-preview"
+CONVERSATION_CONTEXT_LIMIT = 10  # max messages sent to classifier
+
+
 class QueryEngine:
     def __init__(self, gemini, pinecone, store):
         self.gemini = gemini
         self.pinecone = pinecone
         self.store = store
-        self._last_results = None  # for follow-up queries
         self._ref_index = None  # lazy-built fuzzy reference index
 
     def _build_ref_index(self):
@@ -155,28 +159,34 @@ class QueryEngine:
                 missing.add(doc_code.upper())
         return sorted(missing)
 
-    async def query(self, query_text: str) -> dict:
+    async def query(self, query_text: str, messages: list[dict] = None) -> dict:
         """Run the full query pipeline. Returns structured response."""
+        if messages is None:
+            messages = [{"role": "user", "content": query_text, "references": []}]
+
         pipeline_start = time.time()
         steps_log = []
         timings = {}
 
-        # Step 1: Intent classification
+        # Step 1: Classify conversation intent
         t0 = time.time()
-        intent = await self._classify_intent(query_text)
+        intent = await self._classify_conversation_intent(messages)
         timings["1_intent"] = _ms_since(t0)
         steps_log.append({"step": "intent", "result": intent})
         logger.info(f"[query] step 1 intent: {intent} ({timings['1_intent']}ms)")
 
-        if intent == "greeting":
+        if intent == "chat":
+            t0 = time.time()
+            answer = await self._conversational_response(messages)
+            timings["chat_response"] = _ms_since(t0)
+            timings["total"] = _ms_since(pipeline_start)
+            logger.info(f"[query] chat response: {timings['chat_response']}ms")
             return {
-                "answer": "Hello! I can help you search construction standards (Eurocodes). Ask me about loads, densities, safety factors, or any technical question.",
-                "references": [], "steps": steps_log,
-            }
-        if intent == "clarification":
-            return {
-                "answer": "Could you be more specific? For example:\n- \"What density should be used for reinforced concrete?\"\n- \"What are the factors of safety for dead loads?\"\n- \"What snow loads apply at 500m altitude?\"",
-                "references": [], "steps": steps_log,
+                "answer": answer,
+                "references": [],
+                "steps": steps_log,
+                "timings": timings,
+                "missing_documents": [],
             }
 
         # Step 2: Vector search
@@ -415,7 +425,6 @@ class QueryEngine:
         logger.info(f"[query] TOTAL: {total_ms}ms | refs={len(references)} | missing_docs={missing_docs}")
         logger.info(f"[query] TIMINGS: {timings}")
 
-        self._last_results = relevant_extracts
         return {
             "answer": answer,
             "references": references,
@@ -426,28 +435,78 @@ class QueryEngine:
 
     # ----- Step implementations -----
 
-    async def _classify_intent(self, query_text: str) -> str:
-        has_previous = "true" if self._last_results else "false"
-        prompt = f"""Classify this user query into one of these categories:
-- "greeting": user is saying hello or making small talk, no search needed
-- "clarification": query is too vague to search (e.g. single word like "loads" or "concrete" with no specific question)
-- "follow_up": user is asking about or refining previous results (only if previous results exist)
-- "query": a real technical question that needs document search
+    async def _classify_conversation_intent(self, messages: list[dict]) -> str:
+        """Classify the latest user message as 'query' or 'chat'.
 
-Previous results exist: {has_previous}
+        - 'query': a new technical question needing document search
+        - 'chat': greeting, follow-up about already-returned results, clarification, chitchat
+        """
+        # Use last N messages for context
+        recent = messages[-CONVERSATION_CONTEXT_LIMIT:]
 
-User query: "{query_text}"
+        # Build a readable conversation snippet for the classifier
+        convo_lines = []
+        for msg in recent:
+            role = msg["role"].upper()
+            content = msg["content"][:500]  # truncate long messages
+            has_refs = bool(msg.get("references"))
+            ref_note = " [has document references]" if has_refs else ""
+            convo_lines.append(f"{role}{ref_note}: {content}")
+        convo_text = "\n".join(convo_lines)
 
-Return exactly one word: greeting, clarification, follow_up, or query"""
+        prompt = f"""You are classifying the latest user message in a conversation with a construction standards assistant.
+
+Classify into exactly one category:
+- "query": The user is asking a NEW technical question that requires searching construction documents. Examples: asking about load factors, concrete densities, design codes, safety factors, structural requirements.
+- "chat": Everything else — greetings, thank you, follow-up questions about results already shown in the conversation, asking for clarification of a previous answer, chitchat, or messages that are too vague to search.
+
+Conversation:
+{convo_text}
+
+Return exactly one word: query or chat"""
 
         try:
             result = (await self.gemini.generate(prompt)).strip().lower()
-            if result in ("greeting", "clarification", "follow_up", "query"):
+            if result in ("query", "chat"):
                 return result
-            return "query"
+            return "query"  # default to search
         except Exception as e:
-            logger.warning(f"Intent classification failed: {e}")
+            logger.warning(f"Conversation intent classification failed: {e}")
             return "query"
+
+    async def _conversational_response(self, messages: list[dict]) -> str:
+        """Generate a conversational reply (no document search)."""
+        system_prompt = (
+            "You are a helpful construction standards assistant specializing in "
+            "Eurocodes and structural engineering design codes. You help engineers "
+            "find and understand information in their design standards.\n\n"
+            "The user is having a conversation with you. Respond naturally and helpfully. "
+            "If the user is asking about results you previously provided, refer back to them. "
+            "If the user greets you, greet them back and mention what you can help with. "
+            "Keep responses concise and professional."
+        )
+
+        # Build chat messages — include references as context (without base64)
+        chat_messages = []
+        for msg in messages:
+            content = msg["content"]
+            refs = msg.get("references", [])
+            if refs and msg["role"] == "assistant":
+                # Append a brief note about what references were included
+                ref_summary = ", ".join(
+                    ref.get("section_code") or ref.get("title", "ref")
+                    for ref in refs[:10]
+                )
+                content += f"\n\n[Referenced sections: {ref_summary}]"
+            chat_messages.append({"role": msg["role"], "content": content})
+
+        try:
+            return await self.gemini.generate_chat(
+                chat_messages, system=system_prompt, model=CONVERSATION_MODEL
+            )
+        except Exception as e:
+            logger.error(f"Conversational response failed: {e}")
+            return "I'm sorry, I encountered an error. Could you try rephrasing your question?"
 
     async def _extract_keywords(self, query_text: str) -> list[str]:
         prompt = f"""Extract 1-5 search keywords from this construction/engineering query.
