@@ -23,9 +23,6 @@ MIN_REGION_HEIGHT_PCT = 0.08
 MAX_REGION_AREA_PCT = 0.55
 RENDER_DPI = 200
 
-# LLM concurrency: allow some parallelism but leave headroom for query requests
-# With 4 cores: use 2 concurrent LLM calls for ingestion, leaving capacity for queries
-MAX_CONCURRENT_LLM = 2
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +162,6 @@ class DocumentProcessor:
         self.gemini = gemini
         self.pinecone = pinecone
         self.store = store
-        self.sem = asyncio.Semaphore(MAX_CONCURRENT_LLM)
 
     async def process_pdf(self, pdf_bytes: bytes, doc_id: str, filename: str = ""):
         """Full ingestion pipeline for a PDF."""
@@ -325,21 +321,20 @@ Return JSON:
     async def _split_section_batch(self, batch: list[dict], key_prefix: str,
                                     overlap_page_num: int | None = None) -> dict:
         """Split a batch of pages into sections."""
-        async with self.sem:
-            page_texts = ""
-            for p in batch:
-                if overlap_page_num and p["page_num"] == overlap_page_num:
-                    page_texts += f"\n--- PAGE {p['page_num']} [CONTEXT FROM PREVIOUS BATCH — do not re-split] ---\n{p['text']}\n"
-                else:
-                    page_texts += f"\n--- PAGE {p['page_num']} ---\n{p['text']}\n"
+        page_texts = ""
+        for p in batch:
+            if overlap_page_num and p["page_num"] == overlap_page_num:
+                page_texts += f"\n--- PAGE {p['page_num']} [CONTEXT FROM PREVIOUS BATCH — do not re-split] ---\n{p['text']}\n"
+            else:
+                page_texts += f"\n--- PAGE {p['page_num']} ---\n{p['text']}\n"
 
-            start_page = batch[0]["page_num"]
-            end_page = batch[-1]["page_num"]
-            overlap_note = ""
-            if overlap_page_num:
-                overlap_note = f"\nPage {overlap_page_num} is provided as context only (it was already split in the previous batch). Do NOT create sections for its text — only use it to understand if a section continues from the previous batch.\n"
+        start_page = batch[0]["page_num"]
+        end_page = batch[-1]["page_num"]
+        overlap_note = ""
+        if overlap_page_num:
+            overlap_note = f"\nPage {overlap_page_num} is provided as context only (it was already split in the previous batch). Do NOT create sections for its text — only use it to understand if a section continues from the previous batch.\n"
 
-            prompt = f"""You are parsing a construction standards document (Eurocode).
+        prompt = f"""You are parsing a construction standards document (Eurocode).
 Given the text from pages {start_page} to {end_page}, identify all sections and their boundaries.
 {overlap_note}
 Known section code patterns: numbered like 1.2.3, A.2.1 (Annexes), or named like "Foreword", "Scope".
@@ -362,34 +357,22 @@ Every piece of text should belong to exactly one section — do not skip any tex
 PAGE TEXT:
 {page_texts}"""
 
-            try:
-                result = await self.gemini.generate_json(prompt)
-                sections = {}
-                for sec in result:
-                    code = sec.get("section_code") or "unknown"
-                    code_clean = str(code).replace(" ", "_")
-                    key = f"{key_prefix}_{code_clean}"
-                    sections[key] = {
-                        "section_code": code,
-                        "title": sec.get("title") or "",
-                        "page": sec.get("page") or start_page,
-                        "content": sec.get("content") or "",
-                        "doc_key_prefix": key_prefix,
-                    }
-                return sections
-            except Exception as e:
-                logger.error(f"Section split failed for pages {start_page}-{end_page}: {e}")
-                # Fallback: store entire batch as one section
-                all_text = "\n".join(p["text"] for p in batch
-                                     if not (overlap_page_num and p["page_num"] == overlap_page_num))
-                key = f"{key_prefix}_pages_{start_page}-{end_page}"
-                return {key: {
-                    "section_code": f"pages_{start_page}-{end_page}",
-                    "title": f"Pages {start_page}-{end_page}",
-                    "page": start_page,
-                    "content": all_text,
-                    "doc_key_prefix": key_prefix,
-                }}
+        try:
+            result = await self.gemini.generate_json_with_fallback(prompt)
+            return self._parse_section_result(result, key_prefix, start_page)
+        except Exception as e:
+            logger.error(f"Section split failed for pages {start_page}-{end_page}: {e}")
+            # Fallback: store entire batch as one section
+            all_text = "\n".join(p["text"] for p in batch
+                                 if not (overlap_page_num and p["page_num"] == overlap_page_num))
+            key = f"{key_prefix}_pages_{start_page}-{end_page}"
+            return {key: {
+                "section_code": f"pages_{start_page}-{end_page}",
+                "title": f"Pages {start_page}-{end_page}",
+                "page": start_page,
+                "content": all_text,
+                "doc_key_prefix": key_prefix,
+            }}
 
     @staticmethod
     def _normalize_text(text: str) -> str:
@@ -397,6 +380,27 @@ PAGE TEXT:
         t = text.lower()
         t = re.sub(r'\s+', ' ', t).strip()
         return t
+
+    @staticmethod
+    def _parse_section_result(result: list, key_prefix: str,
+                               default_page: int) -> dict:
+        """Parse LLM section split result into sections dict."""
+        sections = {}
+        for sec in result:
+            code = sec.get("section_code") or "unknown"
+            code_clean = str(code).replace(" ", "_")
+            key = f"{key_prefix}_{code_clean}"
+            # Avoid overwriting — append page suffix for dupes
+            if key in sections:
+                key = f"{key}_retry_{default_page}"
+            sections[key] = {
+                "section_code": code,
+                "title": sec.get("title") or "",
+                "page": sec.get("page") or default_page,
+                "content": sec.get("content") or "",
+                "doc_key_prefix": key_prefix,
+            }
+        return sections
 
     def _find_coverage_gaps(self, pages: list[dict], sections: dict) -> list[dict]:
         """Find pages where <90% of text appears in any section output."""
@@ -445,9 +449,8 @@ PAGE TEXT:
 
     async def _retry_single_page(self, page: dict, key_prefix: str) -> dict:
         """Retry section splitting for a single page with explicit prompt."""
-        async with self.sem:
-            page_num = page["page_num"]
-            prompt = f"""This is a single page (page {page_num}) from a construction standards document.
+        page_num = page["page_num"]
+        prompt = f"""This is a single page (page {page_num}) from a construction standards document.
 Categorize ALL text on this page into sections. Include every word.
 If unsure of the section code, use "uncategorized_page_{page_num}".
 
@@ -466,27 +469,12 @@ Return JSON array:
 PAGE TEXT:
 {page["text"]}"""
 
-            try:
-                result = await self.gemini.generate_json(prompt)
-                sections = {}
-                for sec in result:
-                    code = sec.get("section_code") or f"uncategorized_page_{page_num}"
-                    code_clean = str(code).replace(" ", "_")
-                    key = f"{key_prefix}_{code_clean}"
-                    # Avoid overwriting existing sections — append _retry suffix
-                    if key in sections:
-                        key = f"{key}_retry_{page_num}"
-                    sections[key] = {
-                        "section_code": code,
-                        "title": sec.get("title") or "",
-                        "page": page_num,
-                        "content": sec.get("content") or "",
-                        "doc_key_prefix": key_prefix,
-                    }
-                return sections
-            except Exception as e:
-                logger.error(f"Single-page retry failed for page {page_num}: {e}")
-                return {}
+        try:
+            result = await self.gemini.generate_json_with_fallback(prompt)
+            return self._parse_section_result(result, key_prefix, page_num)
+        except Exception as e:
+            logger.error(f"Single-page retry failed for page {page_num}: {e}")
+            return {}
 
     async def _describe_visual_content(self, pages: list[dict], doc_id: str, key_prefix: str):
         """Use LLM vision to describe tables/figures on pages that have visual content."""
@@ -514,8 +502,7 @@ PAGE TEXT:
 
     async def _describe_page_visuals(self, page: dict, doc_id: str, key_prefix: str):
         """Describe visual content on a single page using LLM vision."""
-        async with self.sem:
-            prompt = """You are examining a page from a construction standards document (Eurocode).
+        prompt = """You are examining a page from a construction standards document (Eurocode).
 Describe ALL visual elements on this page: tables, figures, diagrams, charts.
 
 For each visual element found, provide:
@@ -539,34 +526,34 @@ Return JSON array:
 
 If no visual elements are found, return an empty array []."""
 
-            try:
-                from services.gemini import _parse_json_lenient
-                raw = await self.gemini.generate_with_image(prompt, page["page_image_bytes"])
-                if not raw:
-                    return
-                items = _parse_json_lenient(raw)
-                if not isinstance(items, list):
-                    return
+        try:
+            from services.gemini import _parse_json_lenient
+            raw = await self.gemini.generate_with_image(prompt, page["page_image_bytes"])
+            if not raw:
+                return
+            items = _parse_json_lenient(raw)
+            if not isinstance(items, list):
+                return
 
-                for item in items:
-                    if not isinstance(item, dict):
-                        continue
-                    code = item.get("code") or f"page_{page['page_num']}_item"
-                    code_key = str(code).replace(" ", "_").replace(".", "_")
-                    obj_key = f"{key_prefix}_{code_key}"
-                    r2_path = f"images/{doc_id}/page_{page['page_num']}.png"
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                code = item.get("code") or f"page_{page['page_num']}_item"
+                code_key = str(code).replace(" ", "_").replace(".", "_")
+                obj_key = f"{key_prefix}_{code_key}"
+                r2_path = f"images/{doc_id}/page_{page['page_num']}.png"
 
-                    self.store.objects[obj_key] = {
-                        "type": item.get("type") or "unknown",
-                        "code": str(code),
-                        "title": item.get("title") or "",
-                        "description": item.get("description") or "",
-                        "page": page["page_num"],
-                        "r2_path": r2_path,
-                        "doc_id": doc_id,
-                    }
-            except Exception as e:
-                logger.error(f"Visual description failed for page {page['page_num']}: {e}")
+                self.store.objects[obj_key] = {
+                    "type": item.get("type") or "unknown",
+                    "code": str(code),
+                    "title": item.get("title") or "",
+                    "description": item.get("description") or "",
+                    "page": page["page_num"],
+                    "r2_path": r2_path,
+                    "doc_id": doc_id,
+                }
+        except Exception as e:
+            logger.error(f"Visual description failed for page {page['page_num']}: {e}")
 
     async def _extract_references(self, sections: dict, known_codes: list[str], key_prefix: str):
         """Extract cross-references from each section."""
@@ -585,8 +572,7 @@ If no visual elements are found, return an empty array []."""
 
     async def _extract_refs_for_section(self, key: str, sec: dict, codes_str: str, key_prefix: str):
         """Extract references from a single section."""
-        async with self.sem:
-            prompt = f"""Extract all references to other sections, tables, figures, formulae, annexes, or external documents from this text.
+        prompt = f"""Extract all references to other sections, tables, figures, formulae, annexes, or external documents from this text.
 
 References are signalled by phrases like: "see X", "according to X", "given in X", "using X", "defined in X", "specified in X", "in accordance with X".
 
@@ -607,27 +593,27 @@ If no references found, return [].
 Section text:
 {sec['content'][:3000]}"""
 
-            try:
-                refs = await self.gemini.generate_json(prompt)
-                ref_keys = []
-                for ref in refs:
-                    target = ref.get("target_code", "")
-                    target_type = ref.get("target_type", "section")
-                    # Build the full key for internal references
-                    if target_type == "external_document":
-                        ref_keys.append(target.replace(" ", "_"))
+        try:
+            refs = await self.gemini.generate_json(prompt)
+            ref_keys = []
+            for ref in refs:
+                target = ref.get("target_code", "")
+                target_type = ref.get("target_type", "section")
+                # Build the full key for internal references
+                if target_type == "external_document":
+                    ref_keys.append(target.replace(" ", "_"))
+                else:
+                    target_clean = target.replace(" ", "_")
+                    # Avoid double-prefix if LLM already included it
+                    if target_clean.startswith(key_prefix):
+                        ref_key = target_clean
                     else:
-                        target_clean = target.replace(" ", "_")
-                        # Avoid double-prefix if LLM already included it
-                        if target_clean.startswith(key_prefix):
-                            ref_key = target_clean
-                        else:
-                            ref_key = f"{key_prefix}_{target_clean}"
-                        ref_keys.append(ref_key)
-                self.store.references[key] = ref_keys
-            except Exception as e:
-                logger.error(f"Reference extraction failed for {key}: {e}")
-                self.store.references[key] = []
+                        ref_key = f"{key_prefix}_{target_clean}"
+                    ref_keys.append(ref_key)
+            self.store.references[key] = ref_keys
+        except Exception as e:
+            logger.error(f"Reference extraction failed for {key}: {e}")
+            self.store.references[key] = []
 
     async def _embed_and_upsert(self, sections: dict, doc_id: str, doc_name: str, key_prefix: str):
         """Create embeddings and upsert to Pinecone."""

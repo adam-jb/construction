@@ -573,7 +573,7 @@ Sections:
 Return JSON object mapping section keys to extracted relevant text (or null):"""
 
         try:
-            result = await self.gemini.generate_json(prompt)
+            result = await self.gemini.generate_json_with_fallback(prompt)
             return {k: v for k, v in result.items() if v is not None and v}
         except Exception as e:
             logger.warning(f"Relevance batch failed: {e}")
@@ -603,7 +603,7 @@ If conflicts exist, return JSON array:
 If no conflicts, return: []"""
 
         try:
-            return await self.gemini.generate_json(prompt)
+            return await self.gemini.generate_json_with_fallback(prompt)
         except Exception as e:
             logger.warning(f"Conflict detection failed: {e}")
             return []
