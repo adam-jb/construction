@@ -257,13 +257,69 @@ Proprietary - Internal use only
 
 ---
 
+## 🔀 Git Workflow
+
+We use **Git Flow** with protected branches to prevent merge conflicts:
+
+```
+main (production)     ← Only merge from develop via PR
+  ↑
+develop (integration) ← PR your feature branches here
+  ↑
+feature/* branches    ← Your day-to-day work
+```
+
+### Daily Workflow:
+
+```bash
+# 1. Start new feature
+git checkout develop
+git pull origin develop
+git checkout -b feature/your-feature-name
+
+# 2. Make changes, commit often
+git add .
+git commit -m "feat: description of changes"
+
+# 3. Push and create PR
+git push -u origin feature/your-feature-name
+# Create PR to 'develop' (not main!) in GitHub
+
+# 4. After PR merged, clean up
+git checkout develop
+git pull origin develop
+git branch -d feature/your-feature-name
+```
+
+### Commit Message Convention:
+
+- `feat:` - New feature
+- `fix:` - Bug fix
+- `docs:` - Documentation only
+- `style:` - Formatting, missing semicolons, etc.
+- `refactor:` - Code restructuring
+- `test:` - Adding tests
+- `chore:` - Maintenance tasks
+
+### Branch Protection Rules:
+
+- `main` - Protected, requires PR from develop, 1 approval
+- `develop` - Protected, requires PR from feature branches, 1 approval
+- `feature/*` - Unprotected, delete after merge
+
+**⚠️ Never commit directly to `main` or `develop`**
+
+---
+
 ## 🤝 Contributing
 
-1. Create feature branch from `main`
-2. Follow TypeScript/Python style guides
-3. Update API contract if needed (notify team)
-4. Write tests
-5. Submit PR with description
+1. **Branch** from latest `develop`
+2. **Follow** TypeScript/Python style guides (Prettier, Black)
+3. **Update** API contract if needed (`openapi.yaml`) and notify team
+4. **Write** tests for new features
+5. **PR** to `develop` with clear description and screenshots
+6. **Review** other PRs promptly
+7. **Merge** only after approval and passing CI
 
 ---
 
