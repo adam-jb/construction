@@ -21,9 +21,20 @@ export interface Reference {
 }
 
 export interface ChatMessage {
+  id: string;
   type: 'user' | 'assistant';
   text: string;
   references?: Reference[];
+  timestamp: Date;
+}
+
+export interface ChatSession {
+  id: string;
+  name: string;
+  lastMessage: string;
+  lastAccessedAt: Date;
+  archived: boolean;
+  messages: ChatMessage[];
 }
 
 export interface Scenario {

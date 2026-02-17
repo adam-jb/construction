@@ -222,8 +222,8 @@ export default function DocumentList({
       </div>
 
       <div className="px-3 py-2 border-t border-slate-200 text-xs text-slate-500">
-        {filteredDocuments.length} of {documents.length} documents
-        {processingCount > 0 && ` (${processingCount} processing)`}
+        {enabledDocuments.size} of {documents.length} documents ({documents.length - enabledDocuments.size} remaining)
+        {processingCount > 0 && ` • ${processingCount} processing`}
       </div>
     </div>
   );
