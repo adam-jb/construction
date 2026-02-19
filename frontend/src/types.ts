@@ -8,9 +8,10 @@ export interface Document {
 }
 
 export interface Reference {
-  docId: string;
+  documentId: string;
   page: number;
   label: string;
+  excerpt?: string;
   highlightText?: string[];  // Text strings to highlight on the page
   highlightArea?: {          // Legacy: rectangle-based highlighting
     top: number;    // percentage from top

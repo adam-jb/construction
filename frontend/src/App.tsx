@@ -10,19 +10,28 @@ function App() {
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [activeDocument, setActiveDocument] = useState<Document | null>(null);
+  const [activeDocumentPage, setActiveDocumentPage] = useState<number>(1);
   const [enabledDocuments, setEnabledDocuments] = useState<Set<string>>(new Set());
+  const [documents, setDocuments] = useState<Document[]>([]);
 
-  // Test API client on mount
+  // Test API client on mount and load documents
   useEffect(() => {
     apiClient.healthCheck().then(res => {
       console.log('✅ API Health Check:', res);
     }).catch(err => {
       console.error('❌ API Health Check Failed:', err);
     });
+
+    apiClient.listDocuments().then(res => {
+      setDocuments(res.items);
+    }).catch(err => {
+      console.error('Failed to load documents:', err);
+    });
   }, []);
 
   const handleDocumentSelect = (document: Document) => {
     setActiveDocument(document);
+    setActiveDocumentPage(1);
     setRightPanelCollapsed(false);
   };
 
@@ -36,6 +45,15 @@ function App() {
       }
       return newSet;
     });
+  };
+
+  const handleReferenceClick = (documentId: string, page?: number) => {
+    const doc = documents.find(d => d.id === documentId);
+    if (doc) {
+      setActiveDocument(doc);
+      setActiveDocumentPage(page || 1);
+      setRightPanelCollapsed(false);
+    }
   };
 
   return (
@@ -56,6 +74,7 @@ function App() {
         <ChatPane
           collapsed={rightPanelCollapsed}
           onToggleCollapse={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+          onReferenceClick={handleReferenceClick}
         />
 
         {/* Right Panel - Viewer */}
@@ -63,6 +82,7 @@ function App() {
           collapsed={rightPanelCollapsed}
           onToggleCollapse={() => setRightPanelCollapsed(!rightPanelCollapsed)}
           activeDocument={activeDocument}
+          initialPage={activeDocumentPage}
         />
       </div>
     </div>

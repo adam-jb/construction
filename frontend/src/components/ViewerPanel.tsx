@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ChevronRight, ChevronLeft, Search } from 'lucide-react';
 import DocumentViewer from './DocumentViewer';
 import type { Document } from '../api/types';
@@ -7,12 +7,18 @@ interface ViewerPanelProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
   activeDocument: Document | null;
+  initialPage?: number;
 }
 
-export default function ViewerPanel({ collapsed, onToggleCollapse, activeDocument }: ViewerPanelProps) {
-  const [currentPage, setCurrentPage] = useState(1);
+export default function ViewerPanel({ collapsed, onToggleCollapse, activeDocument, initialPage = 1 }: ViewerPanelProps) {
+  const [currentPage, setCurrentPage] = useState(initialPage);
   const [searchQuery, setSearchQuery] = useState('');
   const totalPages = activeDocument?.pages || 1;
+
+  // Update page when initialPage changes
+  useEffect(() => {
+    setCurrentPage(initialPage);
+  }, [initialPage]);
 
   const handlePrevPage = () => {
     if (currentPage > 1) {

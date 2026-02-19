@@ -52,13 +52,13 @@ The ultimate limit state combination uses partial factors:
         timestamp: new Date('2024-01-15T10:00:05'),
         references: [
           {
-            docId: 'SANS10160-1',
+            documentId: 'SANS10160-1',
             page: 6,
             label: '[1] Table 3 — Partial factors for actions',
             highlightText: ['Table 3 — Partial factors for actions', 'Permanent (G)', 'Variable (Q)'],
           },
           {
-            docId: 'SANS10160-2',
+            documentId: 'SANS10160-2',
             page: 5,
             label: '[2] Table 1 — Imposed loads for buildings',
             highlightText: ['Table 1 — Imposed loads for buildings', 'Domestic/residential'],
@@ -89,7 +89,7 @@ Note: Detailed wind load calculations require SANS 10160-3 (Wind Actions), which
         timestamp: new Date('2024-01-15T10:01:10'),
         references: [
           {
-            docId: 'SANS10160-1',
+            documentId: 'SANS10160-1',
             page: 4,
             label: '[1] Clause 4.2.1 — Variable actions',
             highlightText: ['Variable actions', 'wind actions'],
@@ -131,13 +131,13 @@ Note the differences between the two codes — SANS uses higher variable action 
         timestamp: new Date('2024-01-15T11:00:10'),
         references: [
           {
-            docId: 'SANS10160-1',
+            documentId: 'SANS10160-1',
             page: 6,
             label: '[1] Table 3 — Partial factors (SANS)',
             highlightText: ['Table 3 — Partial factors for actions', 'Permanent (G)', 'Variable (Q)'],
           },
           {
-            docId: 'EN1991-1-1',
+            documentId: 'EN1991-1-1',
             page: 4,
             label: '[2] Table A1.2(B) — Partial factors (Eurocode)',
             highlightText: ['Table A1.2(B) — Design values of actions (STR/GEO)', 'Permanent (G)', 'Variable (Q)'],
@@ -175,7 +175,7 @@ Would you like me to find the relevant sections for slab design requirements?`,
         timestamp: new Date('2024-01-15T12:00:05'),
         references: [
           {
-            docId: 'SANS10160-1',
+            documentId: 'SANS10160-1',
             page: 2,
             label: '[1] Scope and responsibility clauses',
             highlightText: ['1. Scope', 'safety, serviceability and durability', 'limit state concept'],
@@ -209,7 +209,7 @@ You should verify these values against your specific design conditions.`,
         timestamp: new Date('2024-01-15T12:01:10'),
         references: [
           {
-            docId: 'SANS10160-1',
+            documentId: 'SANS10160-1',
             page: 7,
             label: '[1] Clause 8.3.1 — Load combinations',
             highlightText: ['8.3.1 Combination of actions', 'ultimate limit states'],

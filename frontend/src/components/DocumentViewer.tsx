@@ -169,7 +169,7 @@ export default function DocumentViewer({
           <div className="space-y-4">
             {pages.map((pageNum) => {
               // Check if this page should be highlighted
-              const isHighlightPage = activeHighlight?.docId === activeDoc.id && 
+              const isHighlightPage = activeHighlight?.documentId === activeDoc.id && 
                 activeHighlight?.page === pageNum;
               
               return (

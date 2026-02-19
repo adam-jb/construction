@@ -1,11 +1,13 @@
-﻿import { useState } from 'react';
+﻿import { useState, useEffect, useMemo } from 'react';
 import { Send, Loader2, ChevronLeft, ChevronRight, ArrowLeft, Archive, MoreVertical, Copy, ThumbsUp, ThumbsDown, Edit2, Check } from 'lucide-react';
-import { ChatSession, ChatMessage } from '../types';
+import { marked } from 'marked';
+import { ChatSession, ChatMessage, Document } from '../types';
 import apiClient from '../api/client';
 
 interface ChatPaneProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
+  onReferenceClick?: (documentId: string, page?: number) => void;
 }
 
 // AI Thinking indicator component
@@ -38,12 +40,28 @@ function AIThinkingIndicator() {
 }
 
 // Message bubble component
-function MessageBubble({ message, onCopy, onFeedback }: { 
+function MessageBubble({ message, onCopy, onFeedback, onReferenceClick, documents }: { 
   message: ChatMessage; 
   onCopy: (text: string) => void;
   onFeedback: (messageId: string, type: 'up' | 'down') => void;
+  onReferenceClick?: (documentId: string, page?: number) => void;
+  documents?: Document[];
 }) {
   const [showActions, setShowActions] = useState(false);
+  
+  // Parse markdown to HTML
+  const htmlContent = useMemo(() => {
+    if (message.type === 'assistant') {
+      return marked.parse(message.text, { breaks: true, gfm: true }) as string;
+    }
+    return message.text;
+  }, [message.text, message.type]);
+  
+  // Get document name for reference
+  const getDocumentName = (docId: string) => {
+    const doc = documents?.find(d => d.id === docId);
+    return doc?.shortName || doc?.name || 'Document';
+  };
   
   if (message.type === 'user') {
     return (
@@ -65,19 +83,25 @@ function MessageBubble({ message, onCopy, onFeedback }: {
         <span className="text-sm font-semibold text-slate-700">B_</span>
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">
-          {message.text}
-        </div>
+        <div 
+          className="text-sm text-slate-800 leading-relaxed prose prose-sm max-w-none"
+          dangerouslySetInnerHTML={{ __html: htmlContent }}
+        />
         {message.references && message.references.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
-            {message.references.map((ref, idx) => (
-              <button
-                key={idx}
-                className="text-xs px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100 transition-colors"
-              >
-                {ref.label}
-              </button>
-            ))}
+            {message.references.map((ref, idx) => {
+              const docName = getDocumentName(ref.documentId);
+              return (
+                <button
+                  key={idx}
+                  onClick={() => onReferenceClick?.(ref.documentId, ref.page)}
+                  className="text-xs px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100 transition-colors"
+                  title={ref.excerpt || `${docName}, Page ${ref.page}`}
+                >
+                  {docName} - p.{ref.page}
+                </button>
+              );
+            })}
           </div>
         )}
         <div className={`flex items-center gap-1 mt-2 transition-opacity ${showActions ? 'opacity-100' : 'opacity-0'}`}>
@@ -219,12 +243,51 @@ function SessionListItem({
   );
 }
 
-export default function ChatPane({ collapsed, onToggleCollapse }: ChatPaneProps) {
+export default function ChatPane({ collapsed, onToggleCollapse, onReferenceClick }: ChatPaneProps) {
   const [query, setQuery] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
   const [documentCount] = useState(2); // TODO: Get from actual document selection
+  const [documents, setDocuments] = useState<Document[]>([]);
+
+  // Load sessions from localStorage on mount
+  useEffect(() => {
+    const savedSessions = localStorage.getItem('chatSessions');
+    if (savedSessions) {
+      try {
+        const parsed = JSON.parse(savedSessions);
+        // Convert date strings back to Date objects
+        const sessionsWithDates = parsed.map((s: any) => ({
+          ...s,
+          lastAccessedAt: new Date(s.lastAccessedAt),
+          messages: s.messages.map((m: any) => ({
+            ...m,
+            timestamp: new Date(m.timestamp)
+          }))
+        }));
+        setSessions(sessionsWithDates);
+      } catch (e) {
+        console.error('Failed to load sessions from localStorage:', e);
+      }
+    }
+  }, []);
+
+  // Save sessions to localStorage whenever they change
+  useEffect(() => {
+    if (sessions.length > 0) {
+      localStorage.setItem('chatSessions', JSON.stringify(sessions));
+    }
+  }, [sessions]);
+
+  // Load documents for better reference display
+  useEffect(() => {
+    apiClient.listDocuments().then(res => {
+      setDocuments(res.items);
+    }).catch(err => {
+      console.error('Failed to load documents:', err);
+    });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -289,9 +352,10 @@ export default function ChatPane({ collapsed, onToggleCollapse }: ChatPaneProps)
         text: response.answer,
         timestamp: new Date(),
         references: response.references?.map(ref => ({
-          docId: ref.documentId,
+          documentId: ref.documentId,
           page: ref.page,
           label: ref.label,
+          excerpt: ref.excerpt,
           highlightText: ref.highlightText
         }))
       };
@@ -458,6 +522,8 @@ export default function ChatPane({ collapsed, onToggleCollapse }: ChatPaneProps)
                     message={message}
                     onCopy={handleCopy}
                     onFeedback={handleFeedback}
+                    onReferenceClick={onReferenceClick}
+                    documents={documents}
                   />
                 ))}
                 {isProcessing && <AIThinkingIndicator />}

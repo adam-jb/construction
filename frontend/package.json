@@ -9,10 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "@construction-ai/shared": "file:../shared",
+    "@tailwindcss/typography": "^0.5.19",
     "lucide-react": "^0.468.0",
-    "@construction-ai/shared": "file:../shared"
+    "marked": "^17.0.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
