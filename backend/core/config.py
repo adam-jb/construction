@@ -7,7 +7,7 @@ _ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
 class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
-    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"]
 
     # Gemini (used for embeddings)
     GEMINI_API_KEY: str = ""
