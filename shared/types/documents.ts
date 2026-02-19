@@ -11,6 +11,7 @@ export interface Document {
   uploadedAt: Date;
   status: DocumentStatus;
   metadata?: DocumentMetadata;
+  keyPrefix?: string; // For matching with references
 }
 
 export type DocumentType = 'code' | 'standard' | 'reference' | 'specification';

@@ -45,6 +45,7 @@ function wrapDocumentsInPagination(docs: any[]): PaginatedResponse<Document> {
     pages: doc.pages,
     uploadedAt: new Date(), // Backend doesn't return this yet
     status: doc.status as 'uploading' | 'processing' | 'ready' | 'error',
+    keyPrefix: doc.key_prefix || doc.id, // For matching with references
   }));
 
   return {
@@ -97,6 +98,7 @@ export const realAPI = {
       pages: doc.pages,
       uploadedAt: new Date(),
       status: doc.status as 'uploading' | 'processing' | 'ready' | 'error',
+      keyPrefix: doc.key_prefix || doc.id,
     };
   },
 

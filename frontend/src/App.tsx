@@ -48,11 +48,17 @@ function App() {
   };
 
   const handleReferenceClick = (documentId: string, page?: number) => {
-    const doc = documents.find(d => d.id === documentId);
+    console.log('🔍 Reference click - looking for document:', documentId);
+    console.log('📚 Available documents:', documents.map(d => ({ id: d.id, name: d.shortName, keyPrefix: d.keyPrefix })));
+    // Try to find by keyPrefix first (references use keyPrefix), then fall back to id
+    const doc = documents.find(d => d.keyPrefix === documentId) || documents.find(d => d.id === documentId);
     if (doc) {
+      console.log('✅ Found document:', doc.shortName, 'page:', page);
       setActiveDocument(doc);
       setActiveDocumentPage(page || 1);
       setRightPanelCollapsed(false);
+    } else {
+      console.error('❌ Document not found with ID or keyPrefix:', documentId);
     }
   };
 
@@ -75,6 +81,7 @@ function App() {
           collapsed={rightPanelCollapsed}
           onToggleCollapse={() => setRightPanelCollapsed(!rightPanelCollapsed)}
           onReferenceClick={handleReferenceClick}
+          enabledDocuments={enabledDocuments}
         />
 
         {/* Right Panel - Viewer */}

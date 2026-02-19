@@ -1,13 +1,38 @@
 ﻿import { useState, useEffect, useMemo } from 'react';
 import { Send, Loader2, ChevronLeft, ChevronRight, ArrowLeft, Archive, MoreVertical, Copy, ThumbsUp, ThumbsDown, Edit2, Check } from 'lucide-react';
 import { marked } from 'marked';
+import katex from 'katex';
 import { ChatSession, ChatMessage, Document } from '../types';
 import apiClient from '../api/client';
+
+// Function to render LaTeX math in text
+function renderMath(text: string): string {
+  // Replace display math $$...$$ first
+  text = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, math) => {
+    try {
+      return katex.renderToString(math.trim(), { displayMode: true, throwOnError: false });
+    } catch (e) {
+      return match;
+    }
+  });
+  
+  // Replace inline math $...$
+  text = text.replace(/\$([^\$\n]+?)\$/g, (match, math) => {
+    try {
+      return katex.renderToString(math.trim(), { displayMode: false, throwOnError: false });
+    } catch (e) {
+      return match;
+    }
+  });
+  
+  return text;
+}
 
 interface ChatPaneProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
   onReferenceClick?: (documentId: string, page?: number) => void;
+  enabledDocuments?: Set<string>;
 }
 
 // AI Thinking indicator component
@@ -49,10 +74,12 @@ function MessageBubble({ message, onCopy, onFeedback, onReferenceClick, document
 }) {
   const [showActions, setShowActions] = useState(false);
   
-  // Parse markdown to HTML
+  // Parse markdown to HTML with LaTeX support
   const htmlContent = useMemo(() => {
     if (message.type === 'assistant') {
-      return marked.parse(message.text, { breaks: true, gfm: true }) as string;
+      // First render LaTeX math, then parse markdown
+      const textWithMath = renderMath(message.text);
+      return marked.parse(textWithMath, { breaks: true, gfm: true }) as string;
     }
     return message.text;
   }, [message.text, message.type]);
@@ -94,8 +121,13 @@ function MessageBubble({ message, onCopy, onFeedback, onReferenceClick, document
               return (
                 <button
                   key={idx}
-                  onClick={() => onReferenceClick?.(ref.documentId, ref.page)}
-                  className="text-xs px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100 transition-colors"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Reference clicked:', ref.documentId, ref.page);
+                    onReferenceClick?.(ref.documentId, ref.page);
+                  }}
+                  className="text-xs px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100 transition-colors cursor-pointer"
                   title={ref.excerpt || `${docName}, Page ${ref.page}`}
                 >
                   {docName} - p.{ref.page}
@@ -243,13 +275,15 @@ function SessionListItem({
   );
 }
 
-export default function ChatPane({ collapsed, onToggleCollapse, onReferenceClick }: ChatPaneProps) {
+export default function ChatPane({ collapsed, onToggleCollapse, onReferenceClick, enabledDocuments }: ChatPaneProps) {
   const [query, setQuery] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
-  const [documentCount] = useState(2); // TODO: Get from actual document selection
   const [documents, setDocuments] = useState<Document[]>([]);
+  
+  // Calculate document count from enabled documents
+  const documentCount = enabledDocuments?.size || 0;
 
   // Load sessions from localStorage on mount
   useEffect(() => {
@@ -362,7 +396,7 @@ export default function ChatPane({ collapsed, onToggleCollapse, onReferenceClick
       
       setActiveSession(prev => prev ? {
         ...prev,
-        messages: [...prev.messages, userMessage, aiMessage],
+        messages: [...prev.messages, aiMessage],
         lastMessage: userQuery,
         lastAccessedAt: new Date()
       } : null);
@@ -380,7 +414,7 @@ export default function ChatPane({ collapsed, onToggleCollapse, onReferenceClick
       
       setActiveSession(prev => prev ? {
         ...prev,
-        messages: [...prev.messages, userMessage, errorMessage],
+        messages: [...prev.messages, errorMessage],
         lastMessage: userQuery,
         lastAccessedAt: new Date()
       } : null);

@@ -18,6 +18,7 @@ class DocumentResponse(BaseModel):
     name: str
     pages: int
     status: str
+    key_prefix: str  # For matching with references
 
 
 class UploadResponse(BaseModel):
@@ -37,6 +38,7 @@ async def list_documents(request: Request) -> list[DocumentResponse]:
             name=doc.get("name", ""),
             pages=doc.get("pages", 0),
             status=doc.get("status", "unknown"),
+            key_prefix=doc.get("key_prefix", doc_id),
         ))
     return docs
 
@@ -54,6 +56,7 @@ async def get_document(request: Request, doc_id: str) -> DocumentResponse:
         name=doc.get("name", ""),
         pages=doc.get("pages", 0),
         status=doc.get("status", "unknown"),
+        key_prefix=doc.get("key_prefix", doc_id),
     )
 
 

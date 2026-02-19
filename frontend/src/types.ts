@@ -5,6 +5,7 @@ export interface Document {
   name: string;
   shortName: string;
   pages: number;
+  keyPrefix?: string; // For matching with references
 }
 
 export interface Reference {

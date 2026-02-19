@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { ChevronRight, ChevronLeft, Search } from 'lucide-react';
-import DocumentViewer from './DocumentViewer';
 import type { Document } from '../api/types';
 
 interface ViewerPanelProps {
@@ -92,17 +91,29 @@ export default function ViewerPanel({ collapsed, onToggleCollapse, activeDocumen
       )}
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-auto">
         {activeDocument ? (
-          <DocumentViewer
-            documents={[activeDocument]}
-            activeDocumentId={activeDocument.id}
-            activePage={currentPage}
-            activeHighlight={null}
-            collapsed={false}
-            onToggleCollapse={onToggleCollapse}
-            onPageChange={setCurrentPage}
-          />
+          <div className="p-6">
+            <div className="bg-slate-50 rounded-lg border-2 border-dashed border-slate-200 p-8">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium text-slate-900 mb-2">{activeDocument.shortName}</h3>
+                <p className="text-sm text-slate-600 mb-1">{activeDocument.name}</p>
+                <p className="text-xs text-slate-500 mb-4">Page {currentPage} of {totalPages}</p>
+                <div className="bg-white rounded-md p-4 text-left">
+                  <p className="text-xs text-slate-600 italic">
+                    PDF viewer not yet implemented. The document reference clicked successfully, 
+                    and the page navigation is working. The actual PDF rendering will be added 
+                    in a future sprint.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="flex items-center justify-center h-full text-center px-6">
             <div>
@@ -112,7 +123,7 @@ export default function ViewerPanel({ collapsed, onToggleCollapse, activeDocumen
                 </svg>
               </div>
               <p className="text-sm text-slate-600 font-medium mb-1">No document selected</p>
-              <p className="text-xs text-slate-500">Select a document from the list or wait for a query response</p>
+              <p className="text-xs text-slate-500">Select a document from the list or click a reference in the chat</p>
             </div>
           </div>
         )}
