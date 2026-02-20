@@ -4,13 +4,14 @@ import DocumentsPanel from './components/DocumentsPanel';
 import ChatPane from './components/ChatPane';
 import ViewerPanel from './components/ViewerPanel';
 import apiClient from './api/client';
-import type { Document } from './api/types';
+import type { Document, Reference } from './api/types';
 
 function App() {
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [activeDocument, setActiveDocument] = useState<Document | null>(null);
   const [activeDocumentPage, setActiveDocumentPage] = useState<number>(1);
+  const [activeHighlight, setActiveHighlight] = useState<Reference | null>(null);
   const [enabledDocuments, setEnabledDocuments] = useState<Set<string>>(new Set());
   const [documents, setDocuments] = useState<Document[]>([]);
 
@@ -32,6 +33,7 @@ function App() {
   const handleDocumentSelect = (document: Document) => {
     setActiveDocument(document);
     setActiveDocumentPage(1);
+    setActiveHighlight(null); // Clear highlight when manually selecting document
     setRightPanelCollapsed(false);
   };
 
@@ -47,18 +49,19 @@ function App() {
     });
   };
 
-  const handleReferenceClick = (documentId: string, page?: number) => {
-    console.log('🔍 Reference click - looking for document:', documentId);
+  const handleReferenceClick = (reference: Reference) => {
+    console.log('🔍 Reference click:', reference);
     console.log('📚 Available documents:', documents.map(d => ({ id: d.id, name: d.shortName, keyPrefix: d.keyPrefix })));
     // Try to find by keyPrefix first (references use keyPrefix), then fall back to id
-    const doc = documents.find(d => d.keyPrefix === documentId) || documents.find(d => d.id === documentId);
+    const doc = documents.find(d => d.keyPrefix === reference.documentId) || documents.find(d => d.id === reference.documentId);
     if (doc) {
-      console.log('✅ Found document:', doc.shortName, 'page:', page);
+      console.log('✅ Found document:', doc.shortName, 'page:', reference.page, 'highlight:', reference.highlightText);
       setActiveDocument(doc);
-      setActiveDocumentPage(page || 1);
+      setActiveDocumentPage(reference.page);
+      setActiveHighlight(reference);
       setRightPanelCollapsed(false);
     } else {
-      console.error('❌ Document not found with ID or keyPrefix:', documentId);
+      console.error('❌ Document not found with ID or keyPrefix:', reference.documentId);
     }
   };
 
@@ -82,6 +85,7 @@ function App() {
           onToggleCollapse={() => setRightPanelCollapsed(!rightPanelCollapsed)}
           onReferenceClick={handleReferenceClick}
           enabledDocuments={enabledDocuments}
+          activeHighlight={activeHighlight}
         />
 
         {/* Right Panel - Viewer */}
@@ -90,6 +94,7 @@ function App() {
           onToggleCollapse={() => setRightPanelCollapsed(!rightPanelCollapsed)}
           activeDocument={activeDocument}
           initialPage={activeDocumentPage}
+          activeHighlight={activeHighlight}
         />
       </div>
     </div>

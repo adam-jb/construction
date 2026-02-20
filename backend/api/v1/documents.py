@@ -3,6 +3,7 @@ import re
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, UploadFile, File, status
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from core.config import settings
@@ -121,6 +122,31 @@ async def delete_document(request: Request, doc_id: str):
     del store.documents[doc_id]
 
     store.save_all()
+
+
+@router.get("/documents/{doc_id}/pdf")
+async def get_document_pdf(request: Request, doc_id: str):
+    """Serve the PDF file for a document."""
+    store = request.app.state.store
+    doc = store.documents.get(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    file_key = doc.get("file_key", f"pdfs/{doc_id}.pdf")
+    
+    try:
+        pdf_bytes = store.download_file(file_key)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'inline; filename="{doc.get("code", doc_id)}.pdf"',
+                "Cache-Control": "public, max-age=3600",
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to retrieve PDF for {doc_id}: {e}")
+        raise HTTPException(status_code=404, detail="PDF file not found")
 
 
 @router.get("/documents/{doc_id}/sections")

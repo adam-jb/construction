@@ -2,7 +2,7 @@
 import { Send, Loader2, ChevronLeft, ChevronRight, ArrowLeft, Archive, MoreVertical, Copy, ThumbsUp, ThumbsDown, Edit2, Check } from 'lucide-react';
 import { marked } from 'marked';
 import katex from 'katex';
-import { ChatSession, ChatMessage, Document } from '../types';
+import { ChatSession, ChatMessage, Document, Reference } from '../types';
 import apiClient from '../api/client';
 
 // Function to render LaTeX math in text
@@ -31,8 +31,9 @@ function renderMath(text: string): string {
 interface ChatPaneProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
-  onReferenceClick?: (documentId: string, page?: number) => void;
+  onReferenceClick?: (reference: Reference) => void;
   enabledDocuments?: Set<string>;
+  activeHighlight?: Reference | null;
 }
 
 // AI Thinking indicator component
@@ -65,24 +66,51 @@ function AIThinkingIndicator() {
 }
 
 // Message bubble component
-function MessageBubble({ message, onCopy, onFeedback, onReferenceClick, documents }: { 
+function MessageBubble({ message, onCopy, onFeedback, onReferenceClick, documents, activeHighlight }: { 
   message: ChatMessage; 
   onCopy: (text: string) => void;
   onFeedback: (messageId: string, type: 'up' | 'down') => void;
-  onReferenceClick?: (documentId: string, page?: number) => void;
+  onReferenceClick?: (reference: Reference) => void;
   documents?: Document[];
+  activeHighlight?: Reference | null;
 }) {
   const [showActions, setShowActions] = useState(false);
   
-  // Parse markdown to HTML with LaTeX support
-  const htmlContent = useMemo(() => {
-    if (message.type === 'assistant') {
-      // First render LaTeX math, then parse markdown
-      const textWithMath = renderMath(message.text);
-      return marked.parse(textWithMath, { breaks: true, gfm: true }) as string;
+  // Parse citations from text and create clickable inline citations
+  const processedContent = useMemo(() => {
+    if (message.type !== 'assistant') return message.text;
+    
+    // First render LaTeX math, then parse markdown
+    const textWithMath = renderMath(message.text);
+    let html = marked.parse(textWithMath, { breaks: true, gfm: true }) as string;
+    
+    // Find citation patterns like [5.1, Page 26] or [Section 5.3, Page 27]
+    // and make them clickable
+    if (message.references && message.references.length > 0) {
+      // Pattern: [anything, Page NN] or [anything p.NN]
+      const citationPattern = /\[([^\]]+?)(?:,\s*(?:Page|p\.)\s*(\d+))\]/gi;
+      
+      html = html.replace(citationPattern, (match, section, page) => {
+        const pageNum = parseInt(page);
+        // Try to find matching reference
+        const ref = message.references?.find(r => 
+          r.page === pageNum && (r.section?.includes(section.trim()) || r.label?.includes(section.trim()))
+        ) || message.references?.[0]; // Fallback to first ref if no exact match
+        
+        if (ref) {
+          const refData = JSON.stringify(ref).replace(/"/g, '&quot;');
+          return `<button 
+            class="citation-link text-purple-700 hover:text-purple-900 hover:underline font-medium cursor-pointer transition-colors" 
+            data-ref='${refData}'
+            onclick="window.handleCitationClick(this)"
+          >${match}</button>`;
+        }
+        return match;
+      });
     }
-    return message.text;
-  }, [message.text, message.type]);
+    
+    return html;
+  }, [message.text, message.type, message.references]);
   
   // Get document name for reference
   const getDocumentName = (docId: string) => {
@@ -112,25 +140,57 @@ function MessageBubble({ message, onCopy, onFeedback, onReferenceClick, document
       <div className="flex-1 min-w-0">
         <div 
           className="text-sm text-slate-800 leading-relaxed prose prose-sm max-w-none"
-          dangerouslySetInnerHTML={{ __html: htmlContent }}
+          dangerouslySetInnerHTML={{ __html: processedContent }}
+          onClick={(e) => {
+            // Handle citation clicks within the content
+            const target = e.target as HTMLElement;
+            if (target.classList.contains('citation-link')) {
+              const refData = target.getAttribute('data-ref');
+              if (refData) {
+                try {
+                  const ref = JSON.parse(refData);
+                  onReferenceClick?.(ref);
+                } catch (err) {
+                  console.error('Failed to parse citation reference:', err);
+                }
+              }
+            }
+          }}
         />
         {message.references && message.references.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {message.references.map((ref, idx) => {
               const docName = getDocumentName(ref.documentId);
+              const isActive = activeHighlight && 
+                activeHighlight.documentId === ref.documentId && 
+                activeHighlight.page === ref.page;
+              
               return (
                 <button
                   key={idx}
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    console.log('Reference clicked:', ref.documentId, ref.page);
-                    onReferenceClick?.(ref.documentId, ref.page);
+                    console.log('Reference clicked:', ref);
+                    onReferenceClick?.(ref);
                   }}
-                  className="text-xs px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100 transition-colors cursor-pointer"
+                  className={`group text-xs px-2 py-1 border rounded transition-all cursor-pointer relative ${
+                    isActive 
+                      ? 'bg-yellow-100 text-yellow-900 border-yellow-400 ring-2 ring-yellow-300 font-semibold shadow-md' 
+                      : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 hover:border-purple-300'
+                  }`}
                   title={ref.excerpt || `${docName}, Page ${ref.page}`}
                 >
-                  {docName} - p.{ref.page}
+                  <span className="flex items-center gap-1">
+                    {isActive && <span className="text-yellow-600">▶</span>}
+                    <span className={isActive ? 'font-bold' : 'font-medium'}>{docName}</span>
+                    <span className={isActive ? 'text-yellow-600' : 'text-purple-500'}>•</span>
+                    <span>p.{ref.page}</span>
+                  </span>
+                  {/* Visual indicator that this is clickable */}
+                  {!isActive && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+                  )}
                 </button>
               );
             })}
@@ -275,7 +335,7 @@ function SessionListItem({
   );
 }
 
-export default function ChatPane({ collapsed, onToggleCollapse, onReferenceClick, enabledDocuments }: ChatPaneProps) {
+export default function ChatPane({ collapsed, onToggleCollapse, onReferenceClick, enabledDocuments, activeHighlight }: ChatPaneProps) {
   const [query, setQuery] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -558,6 +618,7 @@ export default function ChatPane({ collapsed, onToggleCollapse, onReferenceClick
                     onFeedback={handleFeedback}
                     onReferenceClick={onReferenceClick}
                     documents={documents}
+                    activeHighlight={activeHighlight}
                   />
                 ))}
                 {isProcessing && <AIThinkingIndicator />}

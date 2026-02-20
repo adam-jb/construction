@@ -54,6 +54,12 @@ const mockQueryResponses: Record<string, QueryResponse> = {
         label: 'Wind Load Factors',
         excerpt: 'For structures in terrain category 2, the wind speed multiplier...',
         highlightText: ['wind speed multiplier', 'terrain category 2'],
+        highlightArea: {
+          top: 35,
+          left: 10,
+          width: 80,
+          height: 15,
+        },
         confidence: 0.95,
       },
     ],

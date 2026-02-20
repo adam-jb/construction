@@ -1,23 +1,36 @@
 import { useState, useEffect } from 'react';
 import { ChevronRight, ChevronLeft, Search } from 'lucide-react';
-import type { Document } from '../api/types';
+import PDFViewer from './PDFViewer';
+import type { Document, Reference } from '../api/types';
 
 interface ViewerPanelProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
   activeDocument: Document | null;
   initialPage?: number;
+  activeHighlight?: Reference | null;
 }
 
-export default function ViewerPanel({ collapsed, onToggleCollapse, activeDocument, initialPage = 1 }: ViewerPanelProps) {
+export default function ViewerPanel({ collapsed, onToggleCollapse, activeDocument, initialPage = 1, activeHighlight }: ViewerPanelProps) {
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [searchQuery, setSearchQuery] = useState('');
-  const totalPages = activeDocument?.pages || 1;
+  const [totalPages, setTotalPages] = useState(activeDocument?.pages || 1);
 
   // Update page when initialPage changes
   useEffect(() => {
     setCurrentPage(initialPage);
   }, [initialPage]);
+
+  // Reset totalPages when document changes
+  useEffect(() => {
+    if (activeDocument?.pages) {
+      setTotalPages(activeDocument.pages);
+    }
+  }, [activeDocument]);
+
+  const handlePDFLoadSuccess = (numPages: number) => {
+    setTotalPages(numPages);
+  };
 
   const handlePrevPage = () => {
     if (currentPage > 1) {
@@ -58,7 +71,7 @@ export default function ViewerPanel({ collapsed, onToggleCollapse, activeDocumen
   }
 
   return (
-    <div className="w-96 bg-white border-l border-slate-200 flex flex-col">
+    <div className="w-[700px] bg-white border-l border-slate-200 flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-3 border-b border-slate-200">
         <h2 className="text-sm font-semibold text-slate-900">Viewer</h2>
@@ -93,27 +106,12 @@ export default function ViewerPanel({ collapsed, onToggleCollapse, activeDocumen
       {/* Content */}
       <div className="flex-1 overflow-auto">
         {activeDocument ? (
-          <div className="p-6">
-            <div className="bg-slate-50 rounded-lg border-2 border-dashed border-slate-200 p-8">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-medium text-slate-900 mb-2">{activeDocument.shortName}</h3>
-                <p className="text-sm text-slate-600 mb-1">{activeDocument.name}</p>
-                <p className="text-xs text-slate-500 mb-4">Page {currentPage} of {totalPages}</p>
-                <div className="bg-white rounded-md p-4 text-left">
-                  <p className="text-xs text-slate-600 italic">
-                    PDF viewer not yet implemented. The document reference clicked successfully, 
-                    and the page navigation is working. The actual PDF rendering will be added 
-                    in a future sprint.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+          <PDFViewer
+            documentId={activeDocument.id}
+            pageNumber={currentPage}
+            onLoadSuccess={handlePDFLoadSuccess}
+            activeHighlight={activeHighlight && activeHighlight.page === currentPage ? activeHighlight : null}
+          />
         ) : (
           <div className="flex items-center justify-center h-full text-center px-6">
             <div>

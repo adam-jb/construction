@@ -411,6 +411,10 @@ class QueryEngine:
                 raw_doc_id = obj.get("doc_id", "")
                 doc = self.store.documents.get(raw_doc_id, {})
                 doc_prefix = doc.get("key_prefix", "")
+            
+            # Extract highlight terms from query and extract
+            highlight_terms = self._extract_highlight_terms(query_text, str(extract))
+            
             references.append({
                 "id": sid,
                 "section_code": sec.get("section_code") or obj.get("code", sid),
@@ -418,6 +422,7 @@ class QueryEngine:
                 "page": sec.get("page") or obj.get("page", 0),
                 "extract": str(extract) if extract else "",
                 "doc_id": doc_prefix,
+                "highlightText": highlight_terms,
             })
 
         total_ms = _ms_since(pipeline_start)
@@ -580,6 +585,50 @@ Return JSON array of keywords:
 
         matches.sort(key=lambda x: -x[1])
         return [m[0] for m in matches[:20]]
+
+    def _extract_highlight_terms(self, query_text: str, extract_text: str) -> list[str]:
+        """Extract 2-4 key terms from query that appear in the extract for highlighting."""
+        # Get significant words from query (3+ chars, not stopwords)
+        stop_words = {
+            "what", "where", "when", "which", "that", "this", "with", "from",
+            "have", "does", "should", "would", "could", "the", "for", "are",
+            "how", "and", "about", "can", "you", "tell", "find", "show", "give"
+        }
+        query_lower = query_text.lower()
+        extract_lower = extract_text.lower()
+        
+        # Extract potential highlight terms from query
+        query_words = re.findall(r'\b[a-zA-Z]{3,}\b', query_lower)
+        candidates = [w for w in query_words if w not in stop_words]
+        
+        # Find terms that appear in extract
+        highlights = []
+        for term in candidates:
+            if term in extract_lower:
+                # Find the actual case-preserved version from extract
+                pattern = re.compile(r'\b' + re.escape(term) + r'\b', re.IGNORECASE)
+                match = pattern.search(extract_text)
+                if match:
+                    highlights.append(match.group())
+        
+        # Also look for multi-word phrases (2-3 words)
+        phrases = re.findall(r'\b[a-zA-Z]{3,}(?:\s+[a-zA-Z]{3,}){1,2}\b', query_lower)
+        for phrase in phrases:
+            if phrase in extract_lower and len(highlights) < 4:
+                pattern = re.compile(r'\b' + re.escape(phrase) + r'\b', re.IGNORECASE)
+                match = pattern.search(extract_text)
+                if match:
+                    highlights.append(match.group())
+        
+        # Return unique highlights, limit to 4
+        seen = set()
+        unique_highlights = []
+        for h in highlights:
+            if h.lower() not in seen and len(unique_highlights) < 4:
+                seen.add(h.lower())
+                unique_highlights.append(h)
+        
+        return unique_highlights[:4]
 
     async def _check_relevance(self, query_text: str, candidates: dict) -> dict:
         """LLM checks which sections are relevant and extracts useful text.
