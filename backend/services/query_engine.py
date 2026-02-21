@@ -60,8 +60,8 @@ class QueryEngine:
 
         self._doc_code_to_prefix = {}
         for doc in self.store.documents.values():
-            prefix = doc.get("key_prefix", "")
-            code = doc.get("code", "")
+            prefix = doc.get("key_prefix") or ""
+            code = doc.get("code") or ""
             if not prefix:
                 continue
             for variant in self._code_variants(code):

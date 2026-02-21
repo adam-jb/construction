@@ -71,7 +71,7 @@ export default function ViewerPanel({ collapsed, onToggleCollapse, activeDocumen
   }
 
   return (
-    <div className="w-[700px] bg-white border-l border-slate-200 flex flex-col">
+    <div className="w-full h-full bg-white border-l border-slate-200 flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-3 border-b border-slate-200">
         <h2 className="text-sm font-semibold text-slate-900">Viewer</h2>

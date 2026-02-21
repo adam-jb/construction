@@ -35,13 +35,17 @@ async def list_documents(request: Request) -> list[DocumentResponse]:
     for doc_id, doc in store.documents.items():
         docs.append(DocumentResponse(
             id=doc_id,
-            code=doc.get("code", doc_id),
-            name=doc.get("name", ""),
-            pages=doc.get("pages", 0),
-            status=doc.get("status", "unknown"),
-            key_prefix=doc.get("key_prefix", doc_id),
+            code=doc.get("code") or doc_id,
+            name=doc.get("name") or "",
+            pages=doc.get("pages") or 0,
+            status=doc.get("status") or "unknown",
+            key_prefix=doc.get("key_prefix") or doc_id,
         ))
     return docs
+
+
+class RenameRequest(BaseModel):
+    name: str
 
 
 @router.get("/documents/{doc_id}")
@@ -51,6 +55,37 @@ async def get_document(request: Request, doc_id: str) -> DocumentResponse:
     doc = store.documents.get(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+    return DocumentResponse(
+        id=doc_id,
+        code=doc.get("code", doc_id),
+        name=doc.get("name", ""),
+        pages=doc.get("pages", 0),
+        status=doc.get("status", "unknown"),
+        key_prefix=doc.get("key_prefix", doc_id),
+    )
+
+
+@router.put("/documents/{doc_id}")
+async def rename_document(request: Request, doc_id: str, body: RenameRequest):
+    """Rename a document's display name."""
+    store = request.app.state.store
+    doc = store.documents.get(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    new_name = body.name.strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+
+    # Check for duplicates across other documents
+    for other_id, other_doc in store.documents.items():
+        if other_id != doc_id and other_doc.get("code", "").lower() == new_name.lower():
+            raise HTTPException(status_code=409, detail="A document with this name already exists")
+
+    doc["code"] = new_name
+    doc["name"] = new_name
+    store.save("documents")
+
     return DocumentResponse(
         id=doc_id,
         code=doc.get("code", doc_id),

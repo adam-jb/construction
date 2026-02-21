@@ -133,7 +133,7 @@ export default function PDFViewer({ documentId, pageNumber, onLoadSuccess, onLoa
             <Page
               pageNumber={pageNumber}
               renderTextLayer={true}
-              renderAnnotationLayer={true}
+              renderAnnotationLayer={false}
               className={`shadow-lg ${hasHighlight ? 'ring-4 ring-yellow-300 ring-opacity-50' : ''}`}
               width={pageWidth}
               onLoadSuccess={(page) => {
