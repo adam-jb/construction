@@ -29,10 +29,13 @@ export const scenarios: Scenario[] = [
     documents: ['SANS10160-1', 'SANS10160-2'],
     steps: [
       {
+        id: '1',
         type: 'user',
         text: 'What load cases apply to a residential building in South Africa?',
+        timestamp: new Date('2024-01-15T10:00:00'),
       },
       {
+        id: '2',
         type: 'assistant',
         text: `For residential buildings in South Africa, the following load cases typically apply:
 
@@ -46,15 +49,16 @@ For residential occupancy (Category A), the characteristic imposed load is typic
 The ultimate limit state combination uses partial factors:
 - γ_G = 1.2 for permanent actions (unfavorable)
 - γ_Q = 1.6 for imposed actions`,
+        timestamp: new Date('2024-01-15T10:00:05'),
         references: [
           {
-            docId: 'SANS10160-1',
+            documentId: 'SANS10160-1',
             page: 6,
             label: '[1] Table 3 — Partial factors for actions',
             highlightText: ['Table 3 — Partial factors for actions', 'Permanent (G)', 'Variable (Q)'],
           },
           {
-            docId: 'SANS10160-2',
+            documentId: 'SANS10160-2',
             page: 5,
             label: '[2] Table 1 — Imposed loads for buildings',
             highlightText: ['Table 1 — Imposed loads for buildings', 'Domestic/residential'],
@@ -62,10 +66,13 @@ The ultimate limit state combination uses partial factors:
         ],
       },
       {
+        id: '3',
         type: 'user',
         text: 'What about wind loads?',
+        timestamp: new Date('2024-01-15T10:01:00'),
       },
       {
+        id: '4',
         type: 'assistant',
         text: `Wind loads must also be considered for residential buildings. [1] The key parameters are:
 
@@ -79,9 +86,10 @@ Depend on building geometry, roof pitch, and surface location (windward, leeward
 Wind is treated as a variable action with partial factor γ_Q = 1.6 when unfavorable.
 
 Note: Detailed wind load calculations require SANS 10160-3 (Wind Actions), which is not in the current source selection.`,
+        timestamp: new Date('2024-01-15T10:01:10'),
         references: [
           {
-            docId: 'SANS10160-1',
+            documentId: 'SANS10160-1',
             page: 4,
             label: '[1] Clause 4.2.1 — Variable actions',
             highlightText: ['Variable actions', 'wind actions'],
@@ -97,10 +105,13 @@ Note: Detailed wind load calculations require SANS 10160-3 (Wind Actions), which
     documents: ['SANS10160-1', 'EN1991-1-1'],
     steps: [
       {
+        id: '1',
         type: 'user',
         text: 'What are the partial safety factors for dead and live loads in ultimate limit state design?',
+        timestamp: new Date('2024-01-15T11:00:00'),
       },
       {
+        id: '2',
         type: 'assistant',
         text: `For Ultimate Limit State (ULS) design, the partial safety factors are:
 
@@ -117,15 +128,16 @@ Note: Detailed wind load calculations require SANS 10160-3 (Wind Actions), which
 | Variable (Q) | γ_Q = 1.5 | γ_Q = 0 |
 
 Note the differences between the two codes — SANS uses higher variable action factors while Eurocode uses higher permanent action factors.`,
+        timestamp: new Date('2024-01-15T11:00:10'),
         references: [
           {
-            docId: 'SANS10160-1',
+            documentId: 'SANS10160-1',
             page: 6,
             label: '[1] Table 3 — Partial factors (SANS)',
             highlightText: ['Table 3 — Partial factors for actions', 'Permanent (G)', 'Variable (Q)'],
           },
           {
-            docId: 'EN1991-1-1',
+            documentId: 'EN1991-1-1',
             page: 4,
             label: '[2] Table A1.2(B) — Partial factors (Eurocode)',
             highlightText: ['Table A1.2(B) — Design values of actions (STR/GEO)', 'Permanent (G)', 'Variable (Q)'],
@@ -141,10 +153,13 @@ Note the differences between the two codes — SANS uses higher variable action 
     documents: ['SANS10160-1'],
     steps: [
       {
+        id: '1',
         type: 'user',
         text: 'Is my 200mm slab design compliant with the code requirements?',
+        timestamp: new Date('2024-01-15T12:00:00'),
       },
       {
+        id: '2',
         type: 'assistant',
         text: `I can't confirm compliance or approve a design — that determination must be made by a qualified professional engineer who can assess: [1]
 
@@ -157,9 +172,10 @@ Note the differences between the two codes — SANS uses higher variable action 
 I can show you the relevant code requirements, load tables, and calculation procedures so you can verify compliance yourself.
 
 Would you like me to find the relevant sections for slab design requirements?`,
+        timestamp: new Date('2024-01-15T12:00:05'),
         references: [
           {
-            docId: 'SANS10160-1',
+            documentId: 'SANS10160-1',
             page: 2,
             label: '[1] Scope and responsibility clauses',
             highlightText: ['1. Scope', 'safety, serviceability and durability', 'limit state concept'],
@@ -167,10 +183,13 @@ Would you like me to find the relevant sections for slab design requirements?`,
         ],
       },
       {
+        id: '3',
         type: 'user',
         text: 'Yes, show me the slab loading requirements.',
+        timestamp: new Date('2024-01-15T12:01:00'),
       },
       {
+        id: '4',
         type: 'assistant',
         text: `Here are the key requirements for floor slab loading:
 
@@ -187,9 +206,10 @@ Using the load combination formula:
 w_u = 1.2G + 1.6Q = 1.2(5.0) + 1.6(1.5) = 8.4 kN/m²
 
 You should verify these values against your specific design conditions.`,
+        timestamp: new Date('2024-01-15T12:01:10'),
         references: [
           {
-            docId: 'SANS10160-1',
+            documentId: 'SANS10160-1',
             page: 7,
             label: '[1] Clause 8.3.1 — Load combinations',
             highlightText: ['8.3.1 Combination of actions', 'ultimate limit states'],

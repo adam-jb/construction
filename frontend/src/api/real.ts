@@ -30,9 +30,31 @@ async function handleResponse<T>(response: Response): Promise<T> {
     const error = await response.json().catch(() => ({
       message: response.statusText,
     }));
-    throw new APIError(response.status, error.message || 'API request failed');
+    throw new APIError(response.status, error.message || error.detail || 'API request failed');
   }
   return response.json();
+}
+
+// Backend returns list<DocumentResponse>, we need to wrap in PaginatedResponse
+function wrapDocumentsInPagination(docs: any[]): PaginatedResponse<Document> {
+  const mappedDocs: Document[] = docs.map(doc => ({
+    id: doc.id,
+    name: doc.name,
+    shortName: doc.code || doc.id,
+    type: 'standard' as const, // Backend doesn't return type yet
+    pages: doc.pages,
+    uploadedAt: new Date(), // Backend doesn't return this yet
+    status: doc.status as 'uploading' | 'processing' | 'ready' | 'error',
+    keyPrefix: doc.key_prefix || doc.id, // For matching with references
+  }));
+
+  return {
+    items: mappedDocs,
+    total: mappedDocs.length,
+    page: 1,
+    pageSize: mappedDocs.length,
+    hasMore: false,
+  };
 }
 
 export const realAPI = {
@@ -43,27 +65,20 @@ export const realAPI = {
   },
 
   // Document Management
-  async listDocuments(params?: {
-    page?: number;
-    pageSize?: number;
-    type?: string;
-  }): Promise<PaginatedResponse<Document>> {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set('page', params.page.toString());
-    if (params?.pageSize) searchParams.set('pageSize', params.pageSize.toString());
-    if (params?.type) searchParams.set('type', params.type);
-
-    const response = await fetch(`${API_V1}/documents?${searchParams}`);
-    return handleResponse(response);
+  async listDocuments(): Promise<PaginatedResponse<Document>> {
+    // Backend doesn't support pagination yet, returns simple array
+    const response = await fetch(`${API_V1}/documents`);
+    const docs = await handleResponse<any[]>(response);
+    return wrapDocumentsInPagination(docs);
   },
 
   async uploadDocument(
     file: File,
-    type: string
+    _type: string
   ): Promise<DocumentUploadResponse> {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('type', type);
+    // Backend doesn't use type parameter yet
 
     const response = await fetch(`${API_V1}/documents`, {
       method: 'POST',
@@ -74,15 +89,36 @@ export const realAPI = {
 
   async getDocument(documentId: string): Promise<Document> {
     const response = await fetch(`${API_V1}/documents/${documentId}`);
-    return handleResponse(response);
+    const doc = await handleResponse<any>(response);
+    return {
+      id: doc.id,
+      name: doc.name,
+      shortName: doc.code || doc.id,
+      type: 'standard' as const,
+      pages: doc.pages,
+      uploadedAt: new Date(),
+      status: doc.status as 'uploading' | 'processing' | 'ready' | 'error',
+      keyPrefix: doc.key_prefix || doc.id,
+    };
   },
 
   async deleteDocument(documentId: string): Promise<void> {
     const response = await fetch(`${API_V1}/documents/${documentId}`, {
       method: 'DELETE',
     });
-    if (!response.ok) {
+    if (!response.ok && response.status !== 204) {
       throw new APIError(response.status, 'Failed to delete document');
+    }
+  },
+
+  async renameDocument(documentId: string, newName: string): Promise<void> {
+    const response = await fetch(`${API_V1}/documents/${documentId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName }),
+    });
+    if (!response.ok) {
+      throw new APIError(response.status, 'Failed to rename document');
     }
   },
 
@@ -90,10 +126,12 @@ export const realAPI = {
     documentId: string,
     pageNumber: number
   ): Promise<PageData> {
-    const response = await fetch(
-      `${API_V1}/documents/${documentId}/pages/${pageNumber}`
-    );
-    return handleResponse(response);
+    // Backend doesn't have this endpoint yet - mock for now
+    return {
+      documentId,
+      pageNumber,
+      textContent: 'Page content not yet available from backend',
+    };
   },
 
   // Query
@@ -105,7 +143,25 @@ export const realAPI = {
       },
       body: JSON.stringify(request),
     });
-    return handleResponse(response);
+    const backendResponse = await handleResponse<any>(response);
+
+    // Map backend response to frontend types
+    return {
+      queryId: backendResponse.queryId || 'unknown',
+      answer: backendResponse.answer,
+      references: (backendResponse.references || []).map((ref: any) => ({
+        id: ref.id,
+        documentId: ref.doc_id || ref.documentId || '',
+        documentName: ref.doc_name || ref.title || '',
+        page: ref.page || 0,
+        section: ref.section_code || '',
+        label: `[${ref.section_code || 'ref'}]`,
+        excerpt: ref.extract || ref.excerpt || '',
+        highlightText: ref.highlightText,
+        confidence: ref.confidence,
+      })),
+      processingTime: backendResponse.processingTime,
+    };
   },
 
   // References
