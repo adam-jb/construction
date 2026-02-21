@@ -48,10 +48,13 @@ export default function PDFViewer({ documentId, pageNumber, onLoadSuccess, onLoa
   useEffect(() => {
     if (!hasHighlight || highlightTerms.length === 0) return;
 
-    // Wait a bit for the text layer to render
+    // Wait for text layer to render
     const timer = setTimeout(() => {
       const textLayer = pageContainerRef.current?.querySelector('.react-pdf__Page__textContent');
-      if (!textLayer) return;
+      if (!textLayer) {
+        console.log('Text layer not found for highlighting');
+        return;
+      }
 
       // Remove previous highlights
       textLayer.querySelectorAll('mark.highlight-text').forEach(mark => {
@@ -62,37 +65,69 @@ export default function PDFViewer({ documentId, pageNumber, onLoadSuccess, onLoa
         }
       });
 
-      // Add new highlights
-      const walkTextNodes = (node: Node) => {
-        if (node.nodeType === Node.TEXT_NODE) {
-          const text = node.textContent || '';
-          let modified = false;
-          let html = text;
+      // Get all text content from the page
+      const allText = textLayer.textContent || '';
+      console.log('Searching for highlights. Terms:', highlightTerms);
+      console.log('Page text sample:', allText.substring(0, 200));
 
-          // Check each highlight term
-          for (const term of highlightTerms) {
-            const regex = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-            if (regex.test(html)) {
-              html = html.replace(regex, '<mark class="highlight-text">$1</mark>');
-              modified = true;
+      // Try to highlight each term more aggressively
+      let highlightCount = 0;
+      const spans = textLayer.querySelectorAll('span');
+      
+      spans.forEach((span) => {
+        const text = span.textContent || '';
+        if (!text.trim()) return;
+
+        // Check each highlight term
+        for (const term of highlightTerms) {
+          if (!term || term.length < 3) continue; // Skip very short terms
+          
+          // Try multiple matching strategies
+          const patterns = [
+            new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), // Word boundary
+            new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), // Exact match
+            new RegExp(term.split(/\s+/).join('\\s*'), 'gi'), // Flexible whitespace
+          ];
+
+          for (const regex of patterns) {
+            if (regex.test(text)) {
+              // Highlight this span
+              const mark = document.createElement('mark');
+              mark.className = 'highlight-text';
+              mark.textContent = text;
+              span.replaceWith(mark);
+              highlightCount++;
+              console.log(`Highlighted: "${text.substring(0, 50)}..." (matched term: "${term}")`);
+              return; // Move to next span
             }
           }
-
-          if (modified) {
-            const span = document.createElement('span');
-            span.innerHTML = html;
-            node.parentNode?.replaceChild(span, node);
-          }
-        } else if (node.nodeType === Node.ELEMENT_NODE) {
-          Array.from(node.childNodes).forEach(walkTextNodes);
         }
-      };
+      });
 
-      Array.from(textLayer.childNodes).forEach(walkTextNodes);
-    }, 300);
+      console.log(`Applied ${highlightCount} highlights`);
+      
+      // If no highlights found, try the excerpt
+      if (highlightCount === 0 && activeHighlight?.excerpt) {
+        const excerpt = activeHighlight.excerpt.substring(0, 50);
+        console.log('No highlights found, trying excerpt:', excerpt);
+        
+        spans.forEach((span) => {
+          const text = span.textContent || '';
+          if (text.includes(excerpt) || excerpt.includes(text.trim())) {
+            const mark = document.createElement('mark');
+            mark.className = 'highlight-text';
+            mark.textContent = text;
+            span.replaceWith(mark);
+            highlightCount++;
+          }
+        });
+        
+        console.log(`Applied ${highlightCount} highlights from excerpt`);
+      }
+    }, 500); // Increased timeout for text layer render
 
     return () => clearTimeout(timer);
-  }, [hasHighlight, highlightTerms, pageNumber]);
+  }, [hasHighlight, highlightTerms, pageNumber, activeHighlight]);
 
   return (
     <div className="flex flex-col items-center h-full overflow-auto bg-slate-50 p-4">
@@ -103,16 +138,16 @@ export default function PDFViewer({ documentId, pageNumber, onLoadSuccess, onLoa
         </div>
       )}
       
-      {/* Highlight indicator banner */}
-      {hasHighlight && (
-        <div className="mb-3 px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-lg shadow-sm">
-          <div className="flex items-center gap-2 text-sm text-yellow-800">
-            <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
-            <span className="font-medium">Highlighted reference on this page</span>
+      {/* Highlight indicator banner - only show if we have content to display */}
+      {hasHighlight && activeHighlight.excerpt && (
+        <div className="mb-3 px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-lg shadow-sm max-w-2xl">
+          <div className="flex items-start gap-2 text-sm text-yellow-800">
+            <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse mt-1 flex-shrink-0"></div>
+            <div className="flex-1">
+              <span className="font-medium block mb-1">Reference excerpt:</span>
+              <p className="text-xs text-yellow-700 italic leading-relaxed">"{activeHighlight.excerpt.substring(0, 150)}{activeHighlight.excerpt.length > 150 ? '...' : ''}"</p>
+            </div>
           </div>
-          {activeHighlight.excerpt && (
-            <p className="text-xs text-yellow-700 mt-1 italic">"{activeHighlight.excerpt.substring(0, 80)}..."</p>
-          )}
         </div>
       )}
       

@@ -28,6 +28,81 @@ function renderMath(text: string): string {
   return text;
 }
 
+// Component to display reference badges with deduplication and collapse
+function ReferenceBadges({ references, onReferenceClick, getDocumentName, activeHighlight }: {
+  references: Reference[];
+  onReferenceClick?: (reference: Reference) => void;
+  getDocumentName: (docId: string) => string;
+  activeHighlight?: Reference | null;
+}) {
+  const [showAll, setShowAll] = useState(false);
+  
+  // Deduplicate references by documentId + page
+  const uniqueRefs = useMemo(() => {
+    const seen = new Map<string, Reference>();
+    references.forEach(ref => {
+      const key = `${ref.documentId}-${ref.page}`;
+      if (!seen.has(key)) {
+        seen.set(key, ref);
+      }
+    });
+    return Array.from(seen.values());
+  }, [references]);
+  
+  const INITIAL_SHOW = 8;
+  const displayRefs = showAll ? uniqueRefs : uniqueRefs.slice(0, INITIAL_SHOW);
+  const hasMore = uniqueRefs.length > INITIAL_SHOW;
+  
+  return (
+    <div className="mt-3">
+      <div className="flex flex-wrap gap-2">
+        {displayRefs.map((ref, idx) => {
+          const docName = getDocumentName(ref.documentId);
+          const isActive = activeHighlight && 
+            activeHighlight.documentId === ref.documentId && 
+            activeHighlight.page === ref.page;
+          
+          return (
+            <button
+              key={`${ref.documentId}-${ref.page}-${idx}`}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Reference clicked:', ref);
+                onReferenceClick?.(ref);
+              }}
+              className={`group text-xs px-2 py-1 border rounded transition-all cursor-pointer relative ${
+                isActive 
+                  ? 'bg-yellow-100 text-yellow-900 border-yellow-400 ring-2 ring-yellow-300 font-semibold shadow-md' 
+                  : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 hover:border-purple-300'
+              }`}
+              title={ref.excerpt ? ref.excerpt.substring(0, 100) : `${docName}, Page ${ref.page}`}
+            >
+              <span className="flex items-center gap-1">
+                {isActive && <span className="text-yellow-600">▶</span>}
+                <span className={isActive ? 'font-bold' : 'font-medium'}>{docName}</span>
+                <span className={isActive ? 'text-yellow-600' : 'text-purple-500'}>•</span>
+                <span>p.{ref.page}</span>
+              </span>
+              {!isActive && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {hasMore && (
+        <button
+          onClick={() => setShowAll(!showAll)}
+          className="mt-2 text-xs text-purple-600 hover:text-purple-800 font-medium hover:underline"
+        >
+          {showAll ? `Show less (-${uniqueRefs.length - INITIAL_SHOW})` : `Show ${uniqueRefs.length - INITIAL_SHOW} more references`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 interface ChatPaneProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -158,43 +233,12 @@ function MessageBubble({ message, onCopy, onFeedback, onReferenceClick, document
           }}
         />
         {message.references && message.references.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {message.references.map((ref, idx) => {
-              const docName = getDocumentName(ref.documentId);
-              const isActive = activeHighlight && 
-                activeHighlight.documentId === ref.documentId && 
-                activeHighlight.page === ref.page;
-              
-              return (
-                <button
-                  key={idx}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    console.log('Reference clicked:', ref);
-                    onReferenceClick?.(ref);
-                  }}
-                  className={`group text-xs px-2 py-1 border rounded transition-all cursor-pointer relative ${
-                    isActive 
-                      ? 'bg-yellow-100 text-yellow-900 border-yellow-400 ring-2 ring-yellow-300 font-semibold shadow-md' 
-                      : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 hover:border-purple-300'
-                  }`}
-                  title={ref.excerpt || `${docName}, Page ${ref.page}`}
-                >
-                  <span className="flex items-center gap-1">
-                    {isActive && <span className="text-yellow-600">▶</span>}
-                    <span className={isActive ? 'font-bold' : 'font-medium'}>{docName}</span>
-                    <span className={isActive ? 'text-yellow-600' : 'text-purple-500'}>•</span>
-                    <span>p.{ref.page}</span>
-                  </span>
-                  {/* Visual indicator that this is clickable */}
-                  {!isActive && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
+          <ReferenceBadges 
+            references={message.references} 
+            onReferenceClick={onReferenceClick}
+            getDocumentName={getDocumentName}
+            activeHighlight={activeHighlight}
+          />
         )}
         <div className={`flex items-center gap-1 mt-2 transition-opacity ${showActions ? 'opacity-100' : 'opacity-0'}`}>
           <button
