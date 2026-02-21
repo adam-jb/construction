@@ -64,8 +64,8 @@ Frontend will be available at: **http://localhost:5173**
 ✅ PDF upload and processing  
 ✅ Document management (rename, delete, select)  
 ✅ Multi-turn conversations with context  
-✅ Reference extraction and citation  
-✅ PDF viewer with text highlighting  
+✅ Reference extraction and citation (citations not perfected-known issue). 
+✅ PDF viewer with text highlighting  (highlighting not perfected-currently uses workaround)
 ✅ Resizable panels  
 
 ### Troubleshooting
@@ -83,10 +83,5 @@ Frontend will be available at: **http://localhost:5173**
 - Don't refresh the page while query is processing
 - Backend terminal will show progress logs
 
-## Feedback Needed
-- Overall UX impressions
-- Any crashes or errors (check browser console)
-- UI/design suggestions
-- Feature requests
 
 See browser console (F12) and backend terminal for detailed logs if issues occur.
