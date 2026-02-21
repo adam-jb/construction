@@ -111,6 +111,17 @@ export const realAPI = {
     }
   },
 
+  async renameDocument(documentId: string, newName: string): Promise<void> {
+    const response = await fetch(`${API_V1}/documents/${documentId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName }),
+    });
+    if (!response.ok) {
+      throw new APIError(response.status, 'Failed to rename document');
+    }
+  },
+
   async getDocumentPage(
     documentId: string,
     pageNumber: number
@@ -133,7 +144,7 @@ export const realAPI = {
       body: JSON.stringify(request),
     });
     const backendResponse = await handleResponse<any>(response);
-    
+
     // Map backend response to frontend types
     return {
       queryId: backendResponse.queryId || 'unknown',

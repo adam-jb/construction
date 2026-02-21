@@ -108,15 +108,15 @@ export const mockAPI = {
     type?: string;
   }): Promise<PaginatedResponse<Document>> {
     await delay(300);
-    
+
     const page = params?.page || 1;
     const pageSize = params?.pageSize || 20;
-    
+
     let filtered = mockDocuments;
     if (params?.type) {
       filtered = mockDocuments.filter(d => d.type === params.type);
     }
-    
+
     return {
       items: filtered,
       total: filtered.length,
@@ -131,7 +131,7 @@ export const mockAPI = {
     _type: string
   ): Promise<DocumentUploadResponse> {
     await delay(2000); // Simulate upload time
-    
+
     return {
       documentId: `doc-${Date.now()}`,
       status: 'processing',
@@ -141,12 +141,12 @@ export const mockAPI = {
 
   async getDocument(documentId: string): Promise<Document> {
     await delay(200);
-    
+
     const doc = mockDocuments.find(d => d.id === documentId);
     if (!doc) {
       throw new Error('Document not found');
     }
-    
+
     return doc;
   },
 
@@ -155,12 +155,20 @@ export const mockAPI = {
     // Mock deletion
   },
 
+  async renameDocument(documentId: string, newName: string): Promise<void> {
+    await delay(300);
+    const doc = mockDocuments.find(d => d.id === documentId);
+    if (doc) {
+      doc.shortName = newName;
+    }
+  },
+
   async getDocumentPage(
     documentId: string,
     pageNumber: number
   ): Promise<PageData> {
     await delay(400);
-    
+
     return {
       documentId,
       pageNumber,
@@ -173,7 +181,7 @@ export const mockAPI = {
   // Query
   async query(request: QueryRequest): Promise<QueryResponse> {
     await delay(1500); // Simulate AI processing time
-    
+
     // Find matching mock response
     const queryLower = (request.query || request.messages?.[request.messages.length - 1]?.content || '').toLowerCase();
     for (const [key, response] of Object.entries(mockQueryResponses)) {
@@ -184,7 +192,7 @@ export const mockAPI = {
         };
       }
     }
-    
+
     // Default response
     return {
       queryId: `query-${Date.now()}`,
@@ -225,7 +233,7 @@ export const mockAPI = {
   // References
   async getReference(referenceId: string): Promise<Reference> {
     await delay(200);
-    
+
     return {
       id: referenceId,
       documentId: 'as1170-2',
@@ -240,7 +248,7 @@ export const mockAPI = {
 
   async getReferenceContext(referenceId: string, _depth: number = 2) {
     await delay(400);
-    
+
     return {
       nodes: [
         {

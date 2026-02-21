@@ -169,6 +169,34 @@ export default function PDFViewer({ documentId, pageNumber, onLoadSuccess, onLoa
       
       {/* CSS for highlight animation */}
       <style>{`
+        /* Fix PDF layer stacking - text layer should overlay canvas */
+        .react-pdf__Page {
+          position: relative;
+        }
+        
+        .react-pdf__Page__canvas {
+          display: block;
+        }
+        
+        .react-pdf__Page__textContent {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          overflow: hidden;
+          opacity: 0.2;
+          line-height: 1;
+        }
+        
+        .react-pdf__Page__textContent span {
+          color: transparent;
+          position: absolute;
+          white-space: pre;
+          cursor: text;
+          transform-origin: 0% 0%;
+        }
+        
         @keyframes highlight-pulse {
           0%, 100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); }
           50% { box-shadow: 0 0 0 8px rgba(255, 193, 7, 0); }
@@ -177,7 +205,7 @@ export default function PDFViewer({ documentId, pageNumber, onLoadSuccess, onLoa
         /* Text highlighting styles */
         .react-pdf__Page__textContent mark.highlight-text {
           background-color: rgba(255, 235, 59, 0.6);
-          color: inherit;
+          color: transparent;
           padding: 2px 0;
           border-radius: 2px;
           animation: highlight-fade 1.5s ease-in-out;
