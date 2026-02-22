@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from core.config import settings
 from services.document_processor import DocumentProcessor
+from services.security import validate_file_upload, FileValidationError, RateLimitExceeded
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -27,6 +28,10 @@ class UploadResponse(BaseModel):
     status: str
 
 
+class RenameRequest(BaseModel):
+    name: str
+
+
 @router.get("/documents")
 async def list_documents(request: Request) -> list[DocumentResponse]:
     """List all ingested documents."""
@@ -42,10 +47,6 @@ async def list_documents(request: Request) -> list[DocumentResponse]:
             key_prefix=doc.get("key_prefix") or doc_id,
         ))
     return docs
-
-
-class RenameRequest(BaseModel):
-    name: str
 
 
 @router.get("/documents/{doc_id}")
@@ -102,23 +103,54 @@ async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
 ):
-    """Upload a PDF for ingestion (processed in background)."""
-    if not file.filename or not file.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+    """
+    Upload a PDF for ingestion (processed in background).
+    
+    Security measures:
+    - Magic byte validation (checks actual file type, not just extension)
+    - File size limit enforcement (server-side)
+    - Malware scanning (EICAR test file detection + suspicious PDF patterns)
+    - Filename sanitization (prevents path traversal)
+    - Rate limiting (10 uploads per hour per IP)
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename is required")
 
     pdf_bytes = await file.read()
-    if len(pdf_bytes) > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
-        raise HTTPException(status_code=400, detail=f"File exceeds {settings.MAX_UPLOAD_SIZE_MB}MB limit")
-
-    # Generate doc_id from filename
-    doc_id = re.sub(r"[.\s]+", "_", file.filename.replace(".pdf", ""))
+    client_ip = request.client.host if request.client else "unknown"
+    
+    # Comprehensive security validation
+    try:
+        safe_filename = validate_file_upload(
+            file_bytes=pdf_bytes,
+            filename=file.filename,
+            max_size_bytes=settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024,
+            client_ip=client_ip
+        )
+    except FileValidationError as e:
+        logger.error(
+            f"File upload rejected for security reasons: {file.filename} "
+            f"from {client_ip}. Reason: {str(e)}"
+        )
+        raise HTTPException(status_code=400, detail=str(e))
+    except RateLimitExceeded as e:
+        logger.warning(f"Rate limit exceeded for {client_ip}: {file.filename}")
+        raise HTTPException(status_code=429, detail=str(e))
+    
+    # Generate doc_id from sanitized filename
+    doc_id = re.sub(r"[.\s]+", "_", safe_filename.replace(".pdf", ""))
 
     store = request.app.state.store
     gemini = request.app.state.gemini
     pc = request.app.state.pinecone
 
     processor = DocumentProcessor(gemini, pc, store)
-    background_tasks.add_task(processor.process_pdf, pdf_bytes, doc_id, file.filename)
+    background_tasks.add_task(processor.process_pdf, pdf_bytes, doc_id, safe_filename)
+    
+    logger.info(
+        f"Document upload accepted: {safe_filename} -> {doc_id} "
+        f"({len(pdf_bytes)} bytes) from {client_ip}"
+    )
 
     return UploadResponse(documentId=doc_id, status="processing")
 
